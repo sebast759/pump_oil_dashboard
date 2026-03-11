@@ -112,7 +112,7 @@ def resolve_xlsx(input_arg: str, force_download: bool, cache_dir: Path, local: b
     # Check cache freshness (7 days)
     if cache_path.exists():
         age_days = (datetime.now() - datetime.fromtimestamp(cache_path.stat().st_mtime)).days
-        if age_days < 7:
+        if age_days < 5:
             print(f"  Using cached file (age: {age_days}d) -> {cache_path}")
             return cache_path
         else:
@@ -470,6 +470,12 @@ def extract_data(xlsx_path: Path, local: bool = False) -> dict:
 
     brent_prices, brent_ytd, brent_latest = fetch_brent(date_strs, local=local)
 
+    # Brent absolute YTD change ($/bbl)
+    brent_jan_idx = next((i for i, ds in enumerate(date_strs) if ds >= f"{dates[-1].year}-01-01"), 0)
+    brent_base    = next((v for v in brent_prices[brent_jan_idx:] if v), None)
+    brent_last    = next((v for v in reversed(brent_prices) if v), None)
+    brent_abs     = round(brent_last - brent_base, 2) if brent_base and brent_last else None
+
     # ---- SENSITIVITY (OLS, computed once here rather than in JS) -----------
     _SENS_WINDOWS = [4, 26]
     _SENS_LAGS    = [0, 1, 2]
@@ -509,7 +515,9 @@ def extract_data(xlsx_path: Path, local: bool = False) -> dict:
         "latest_year": str(latest_year),
         "latest_date": date_strs[-1],
         "brent":        brent_prices,
+        "ytd_weeks":    len(date_strs) - jan_idx,
         "brent_ytd":    brent_ytd,
+        "brent_abs":    brent_abs,
         "brent_latest": brent_latest,
         "sensitivity":  sensitivity,
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -726,6 +734,7 @@ canvas {{ max-width: 100%; }}
           <button class="toggle-btn active" id="btnD" onclick="switchFuel('diesel')">Diesel</button>
         </div>
         <div class="toggle-row">
+          <button class="toggle-btn" id="btnYTD" onclick="setRange(DATA.ytd_weeks)">YTD</button>
           <button class="toggle-btn" id="btn1Y" onclick="setRange(52)">1Y</button>
           <button class="toggle-btn" id="btn3Y" onclick="setRange(156)">3Y</button>
           <button class="toggle-btn" id="btn5Y" onclick="setRange(260)">5Y</button>
@@ -752,9 +761,16 @@ canvas {{ max-width: 100%; }}
   <!-- TAB 1: YTD -->
   <div class="panel" id="tab1">
     <div class="section-title">YTD Performance <span id="ytd-year"></span></div>
-    <div class="section-sub">% change from Jan 1 through latest data point</div>
+    <div class="section-sub">Change from Jan 1 through latest data point</div>
     <div class="grid-7" id="ytd-cards"></div>
     <div class="card">
+      <div class="card-header"><span class="card-title">YTD Price Change</span><span class="card-sub">€/L for pump prices · $/bbl for Brent</span></div>
+      <div class="chart-wrap" style="height:340px;">
+        <canvas id="ytdAbsChart"></canvas>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <div class="card-header"><span class="card-title">YTD Price Change %</span><span class="card-sub">Relative to Jan 1</span></div>
       <div class="chart-wrap" style="height:360px;">
         <canvas id="ytdChart"></canvas>
       </div>
@@ -822,11 +838,11 @@ canvas {{ max-width: 100%; }}
     <div style="margin-bottom:20px;">
       <div class="section-title" style="text-align:center;">Brent → Pump Price Sensitivity</div>
       <div style="text-align:center;font-size:20px;font-weight:300;color:#f59e0b;margin:6px 0 2px;">
-        Suppliers are <span style="text-decoration:underline;">quick</span> to pass on crude price increases,<br>but <span style="text-decoration:underline;">slow</span> to adjust downward
+        Suppliers are <span style="text-decoration:underline;">quick</span> to pass on crude oil price increases (~9 cents for every $10 rise),<br>but <span style="text-decoration:underline;">slow</span> to adjust downward (~6 cents for every $10 decline)
       </div>
     </div>
     <div class="section-sub" style="text-align:center;margin-bottom:0;">
-        Pump price rise / decline (€ cents/L) per $10 Brent move
+        Pump price rise / decline (€/L) per $10 Brent move
     </div>
   
     <div class="grid-2">
@@ -861,7 +877,7 @@ canvas {{ max-width: 100%; }}
     <div style="margin-top:24px;">
       <div class="section-title" style="text-align:center;margin-bottom:4px;">Window &amp; Lag Research</div>
       <div style="text-align:center;font-size:12px;color:#94a3b8;margin-bottom:14px;">
-        Pump price rise / decline (€ cents/L) per $10 Brent move &nbsp;·&nbsp; avg across all countries &nbsp;·&nbsp;
+        Pump price rise / decline (€/L) per $10 Brent move &nbsp;·&nbsp; avg across all countries &nbsp;·&nbsp;
         <strong style="color:#f59e0b;">★ = current model choice (4W, lag 1W)</strong>
       </div>
       <div class="grid-2">
@@ -1120,6 +1136,7 @@ function switchFuel(fuel) {{
 
 function setRange(n) {{
   currentRange = n;
+  $('btnYTD').classList.toggle('active', n === DATA.ytd_weeks);
   $('btn1Y' ).classList.toggle('active', n === 52);
   $('btn3Y' ).classList.toggle('active', n === 156);
   $('btn5Y' ).classList.toggle('active', n === 260);
@@ -1330,6 +1347,108 @@ function buildYTD() {{
         const sepIdx = CTRS.length - 1;  // between PT (last country) and Brent
         const x1 = xScale.getPixelForValue(sepIdx);
         const x2 = xScale.getPixelForValue(sepIdx + 1);
+        const midX = (x1 + x2) / 2;
+        const {{ top, bottom }} = chart.chartArea;
+        const ctx2 = chart.ctx;
+        ctx2.save();
+        ctx2.strokeStyle = '#94a3b8';
+        ctx2.lineWidth = 1;
+        ctx2.setLineDash([5, 4]);
+        ctx2.beginPath();
+        ctx2.moveTo(midX, top);
+        ctx2.lineTo(midX, bottom);
+        ctx2.stroke();
+        ctx2.setLineDash([]);
+        ctx2.restore();
+      }}
+    }}]
+  }});
+
+  // ---- Absolute change chart (€/L pump · $/bbl Brent) --------------------
+  const absD   = CTRS.map(c => DATA.ytd[c].diesel_abs  != null ? +DATA.ytd[c].diesel_abs.toFixed(4)  : null);
+  const abs95  = CTRS.map(c => DATA.ytd[c].euro95_abs  != null ? +DATA.ytd[c].euro95_abs.toFixed(4)  : null);
+  new Chart($('ytdAbsChart').getContext('2d'), {{
+    type: 'bar',
+    data: {{
+      labels: [...CTRS, 'Brent'],
+      datasets: [
+        {{
+          label: 'Diesel',
+          data: [...absD, null],
+          backgroundColor: [...CTRS.map(c => COLORS[c] + 'cc'), 'transparent'],
+          borderRadius: 4, yAxisID: 'y',
+        }},
+        {{
+          label: 'Euro-95',
+          data: [...abs95, null],
+          backgroundColor: [...CTRS.map(c => COLORS[c] + '55'), 'transparent'],
+          borderRadius: 4, yAxisID: 'y',
+        }},
+        {{
+          label: 'Brent',
+          data: [...CTRS.map(() => null), DATA.brent_abs],
+          backgroundColor: '#94a3b880', borderColor: '#94a3b8', borderWidth: 1,
+          borderRadius: 4, yAxisID: 'y2', order: 0,
+        }},
+      ]
+    }},
+    options: {{
+      responsive: true, maintainAspectRatio: false, devicePixelRatio: window.devicePixelRatio,
+      plugins: {{
+        legend: {{ labels: {{ color: '#94a3b8', font: {{ size: 11 }} }} }},
+        tooltip: {{
+          backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1,
+          titleColor: '#94a3b8', bodyColor: '#e2e8f0',
+          callbacks: {{
+            label: ctx => ctx.datasetIndex < 2
+              ? ` ${{ctx.dataset.label}}: ${{ctx.raw >= 0 ? '+' : ''}}${{ctx.raw?.toFixed(2)}}€/L`
+              : ` Brent: ${{ctx.raw >= 0 ? '+' : ''}}$${{ctx.raw?.toFixed(2)}}/bbl`
+          }}
+        }}
+      }},
+      scales: {{
+        x: {{ ticks: {{ color: '#e2e8f0', font: {{ size: 12, weight: 700 }} }}, grid: {{ color: '#1e293b' }} }},
+        y: {{
+          ticks: {{ color: '#e2e8f0', callback: v => (v >= 0 ? '+' : '') + v.toFixed(2) + '€', font: {{ size: 13, weight: '600' }} }},
+          grid: {{ color: '#1e293b' }},
+          title: {{ display: true, text: 'Pump price change (€/L)', color: '#e2e8f0', font: {{ size: 13, weight: '600' }} }},
+        }},
+        y2: {{
+          type: 'linear', position: 'right',
+          ticks: {{ color: '#e2e8f0', callback: v => (v >= 0 ? '+$' : '-$') + Math.abs(v), font: {{ size: 13, weight: '600' }} }},
+          grid: {{ display: false }},
+          title: {{ display: true, text: 'Brent change ($/bbl)', color: '#e2e8f0', font: {{ size: 13, weight: '600' }} }},
+        }}
+      }}
+    }},
+    plugins: [{{
+      id: 'absLabels',
+      afterDatasetsDraw(chart) {{
+        const ctx2 = chart.ctx;
+        chart.data.datasets.forEach((ds, i) => {{
+          chart.getDatasetMeta(i).data.forEach((bar, j) => {{
+            const val = ds.data[j];
+            if (val == null) return;
+            const isBrent = i === 2;
+            const text = isBrent
+              ? (val >= 0 ? '+$' : '-$') + Math.abs(val).toFixed(2)
+              : (val >= 0 ? '+' : '') + val.toFixed(2) + '€';
+            ctx2.save();
+            ctx2.fillStyle = '#e2e8f0';
+            ctx2.font = 'bold 10px DM Sans, sans-serif';
+            ctx2.textAlign = 'center';
+            ctx2.textBaseline = val >= 0 ? 'bottom' : 'top';
+            ctx2.fillText(text, bar.x, val >= 0 ? bar.y - 3 : bar.y + 3);
+            ctx2.restore();
+          }});
+        }});
+      }}
+    }}, {{
+      id: 'absDivider',
+      afterDraw(chart) {{
+        const xScale = chart.scales.x;
+        const x1 = xScale.getPixelForValue(CTRS.length - 1);
+        const x2 = xScale.getPixelForValue(CTRS.length);
         const midX = (x1 + x2) / 2;
         const {{ top, bottom }} = chart.chartArea;
         const ctx2 = chart.ctx;
@@ -1626,9 +1745,9 @@ function buildSensitivity() {{
     const sens = DATA.sensitivity[fuelKey].per_country;
     const upData   = CTRS.map(c => sens[c].up);
     const downData = CTRS.map(c => sens[c].down);
-    const avgUp   = (upData.reduce((s, v) => s + v, 0) / upData.length).toFixed(1);
-    const avgDown = (downData.reduce((s, v) => s + v, 0) / downData.length).toFixed(1);
-    $(slopeId).textContent = `avg ▲ ${{avgUp}}  ▼ ${{avgDown}}  €cts/L per $10 Brent`;
+    const avgUp   = ((upData.reduce((s, v) => s + v, 0) / upData.length) / 100).toFixed(2);
+    const avgDown = ((downData.reduce((s, v) => s + v, 0) / downData.length) / 100).toFixed(2);
+    $(slopeId).textContent = `avg ▲ +${{avgUp}}€/L  ▼ +${{avgDown}}€/L  per $10 Brent`;
 
     return new Chart($(canvasId).getContext('2d'), {{
       type: 'bar',
@@ -1656,16 +1775,16 @@ function buildSensitivity() {{
           tooltip: {{
             backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1,
             titleColor: '#94a3b8', bodyColor: '#e2e8f0',
-            callbacks: {{ label: ctx => ` ${{ctx.dataset.label}}: ${{ctx.raw?.toFixed(1)}} €cts/L per $10 Brent` }}
+            callbacks: {{ label: ctx => ` ${{ctx.dataset.label}}: +${{(ctx.raw/100)?.toFixed(2)}}€/L per $10 Brent` }}
           }}
         }},
         scales: {{
           x: {{ ticks: {{ color: '#e2e8f0', font: {{ size: 12, weight: 700 }} }}, grid: {{ color: '#1e293b' }} }},
           y: {{
-            min: 0, max: 10,
-            ticks: {{ color: '#e2e8f0', callback: v => v.toFixed(1), font: {{ size: 13, weight: '600' }} }},
+            min: 0,
+            ticks: {{ color: '#e2e8f0', callback: v => '+' + (v/100).toFixed(2) + '€', font: {{ size: 13, weight: '600' }} }},
             grid: {{ color: '#1e293b' }},
-            title: {{ display: true, text: '€ cents/L · $10 Brent', color: '#e2e8f0', font: {{ size: 13, weight: '600' }} }},
+            title: {{ display: true, text: '€/L per $10 Brent', color: '#e2e8f0', font: {{ size: 13, weight: '600' }} }},
           }},
         }},
       }},
@@ -1682,7 +1801,7 @@ function buildSensitivity() {{
               ctx2.font = 'bold 10px DM Sans, sans-serif';
               ctx2.textAlign = 'center';
               ctx2.textBaseline = 'bottom';
-              ctx2.fillText(val.toFixed(1), bar.x, bar.y - 3);
+              ctx2.fillText('+' + (val/100).toFixed(2) + '€', bar.x, bar.y - 3);
               ctx2.restore();
             }});
           }});
@@ -1697,7 +1816,7 @@ function buildSensitivity() {{
   // Asymmetry tables (one per fuel, aligned under each chart)
   const sensD  = DATA.sensitivity.diesel.per_country;
   const sens95 = DATA.sensitivity.euro95.per_country;
-  const fmtGap = v => (v >= 0 ? '+' : '') + v.toFixed(1);
+  const fmtEuro = v => (v >= 0 ? '+' : '') + (v/100).toFixed(2) + '€';
 
   function buildAsymTable(wrapperId, sensData, upLabel, dnLabel) {{
     const wrap = $(wrapperId);
@@ -1715,9 +1834,9 @@ function buildSensitivity() {{
       const tr = document.createElement('tr');
       tr.innerHTML = `
         <td style="padding:6px 16px;color:${{COLORS[c]}};font-weight:700;">${{c}}</td>
-        <td class="mono" style="text-align:right;padding:6px 12px;color:#e2e8f0;">${{up.toFixed(1)}}</td>
-        <td class="mono" style="text-align:right;padding:6px 12px;color:#e2e8f0;">${{dn.toFixed(1)}}</td>
-        <td class="mono" style="text-align:right;padding:6px 12px;color:#e2e8f0;font-weight:700;">${{fmtGap(gap)}}</td>`;
+        <td class="mono" style="text-align:right;padding:6px 12px;color:#e2e8f0;">${{fmtEuro(up)}}</td>
+        <td class="mono" style="text-align:right;padding:6px 12px;color:#e2e8f0;">${{fmtEuro(dn)}}</td>
+        <td class="mono" style="text-align:right;padding:6px 12px;color:#e2e8f0;font-weight:700;">${{fmtEuro(gap)}}</td>`;
       tbody.appendChild(tr);
     }});
     wrap.appendChild(tbl);
@@ -1760,9 +1879,9 @@ function buildSensitivity() {{
               ${{w}}W${{isCurrent?' ★':''}}
             </td>
             <td style="text-align:center;padding:5px 12px;color:#94a3b8;">lag ${{l}}W</td>
-            <td class="mono" style="text-align:right;padding:5px 12px;color:#f59e0b;">${{s.up.toFixed(1)}}</td>
-            <td class="mono" style="text-align:right;padding:5px 12px;color:#64748b;">${{s.down.toFixed(1)}}</td>
-            <td class="mono" style="text-align:right;padding:5px 12px;color:#e2e8f0;font-weight:700;">${{(gap>=0?'+':'')}}${{gap.toFixed(1)}}</td>`;
+            <td class="mono" style="text-align:right;padding:5px 12px;color:#f59e0b;">${{fmtEuro(s.up)}}</td>
+            <td class="mono" style="text-align:right;padding:5px 12px;color:#64748b;">${{fmtEuro(s.down)}}</td>
+            <td class="mono" style="text-align:right;padding:5px 12px;color:#e2e8f0;font-weight:700;">${{fmtEuro(gap)}}</td>`;
           tbody.appendChild(tr);
         }});
       }});
@@ -1845,7 +1964,6 @@ def git_push(ghpages_repo: Path, webpage_name: str):
     """Pull, stage, commit and push if there are changes."""
     import subprocess
     print("\nPushing to GitHub Pages ...")
-    subprocess.run(["git", "pull"], cwd=ghpages_repo, check=True)
     subprocess.run(["git", "add", f"{webpage_name}/index.html"],
                    cwd=ghpages_repo, check=True)
     result = subprocess.run(["git", "diff", "--cached", "--quiet"],
@@ -1853,6 +1971,7 @@ def git_push(ghpages_repo: Path, webpage_name: str):
     if result.returncode != 0:
         subprocess.run(["git", "commit", "-m", f"Update {webpage_name} dashboard"],
                        cwd=ghpages_repo, check=True)
+        subprocess.run(["git", "pull", "--rebase"], cwd=ghpages_repo, check=True)
         subprocess.run(["git", "push"], cwd=ghpages_repo, check=True)
         print(f"  Live at https://sebast759.github.io/{webpage_name}/")
     else:
