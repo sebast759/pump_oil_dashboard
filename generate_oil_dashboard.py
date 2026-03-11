@@ -1059,7 +1059,7 @@ function buildHistChart() {{
     type: 'line',
     data: {{ labels: DATA.labels, datasets }},
     options: {{
-      responsive: true, maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false, devicePixelRatio: window.devicePixelRatio,
       plugins: {{
         legend: {{
           labels: {{ color: '#94a3b8', font: {{ size: 11 }}, boxWidth: 16 }}
@@ -1076,20 +1076,20 @@ function buildHistChart() {{
       }},
       scales: {{
         x: {{
-          ticks: {{ color: '#e2e8f0', maxTicksLimit: 18, font: {{ size: 10 }} }},
+          ticks: {{ color: '#e2e8f0', maxTicksLimit: 18, font: {{ size: 13, weight: '600' }} }},
           grid: {{ color: '#1e293b' }}
         }},
         y: {{
           position: 'right',
-          ticks: {{ color: '#e2e8f0', callback: v => `€${{v.toFixed(2)}}`, font: {{ size: 10 }} }},
+          ticks: {{ color: '#e2e8f0', callback: v => `€${{v.toFixed(2)}}`, font: {{ size: 13, weight: '600' }} }},
           grid: {{ color: '#1e293b' }},
-          title: {{ display: true, text: 'Pump price (€/L)', color: '#e2e8f0', font: {{ size: 10 }} }},
+          title: {{ display: true, text: 'Pump price (€/L)', color: '#e2e8f0', font: {{ size: 13, weight: '600' }} }},
         }},
         y2: {{
           position: 'left',
-          ticks: {{ color: '#fdffbf99', callback: v => `$${{v.toFixed(0)}}`, font: {{ size: 10 }} }},
+          ticks: {{ color: '#fdffbf99', callback: v => `$${{v.toFixed(0)}}`, font: {{ size: 13, weight: '600' }} }},
           grid: {{ display: false }},
-          title: {{ display: true, text: 'Brent ($/bbl)', color: '#fdffbf99', font: {{ size: 10 }} }},
+          title: {{ display: true, text: 'Brent ($/bbl)', color: '#fdffbf99', font: {{ size: 13, weight: '600' }} }},
         }}
       }}
     }}
@@ -1153,7 +1153,7 @@ function buildPriceChart() {{
       ],
     }},
     options: {{
-      responsive: true, maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false, devicePixelRatio: window.devicePixelRatio,
       plugins: {{
         legend: {{ display: false }},
         tooltip: {{
@@ -1166,9 +1166,9 @@ function buildPriceChart() {{
         x: {{ ticks: {{ color: '#e2e8f0', font: {{ size: 12, weight: 700 }} }}, grid: {{ color: '#1e293b' }} }},
         y: {{
           min: 1.30,
-          ticks: {{ color: '#e2e8f0', callback: v => `€${{v.toFixed(2)}}`, font: {{ size: 10 }} }},
+          ticks: {{ color: '#e2e8f0', callback: v => `€${{v.toFixed(2)}}`, font: {{ size: 13, weight: '600' }} }},
           grid: {{ color: '#1e293b' }},
-          title: {{ display: true, text: '€/L', color: '#e2e8f0', font: {{ size: 10 }} }},
+          title: {{ display: true, text: '€/L', color: '#e2e8f0', font: {{ size: 13, weight: '600' }} }},
         }},
       }},
     }},
@@ -1279,7 +1279,7 @@ function buildYTD() {{
       ]
     }},
     options: {{
-      responsive: true, maintainAspectRatio: false,
+      responsive: true, maintainAspectRatio: false, devicePixelRatio: window.devicePixelRatio,
       plugins: {{
         legend: {{ labels: {{ color: '#94a3b8', font: {{ size: 11 }} }} }},
         tooltip: {{
@@ -1291,16 +1291,16 @@ function buildYTD() {{
       scales: {{
         x: {{ ticks: {{ color: '#e2e8f0', font: {{ size: 12, weight: 700 }} }}, grid: {{ color: '#1e293b' }} }},
         y: {{
-          ticks: {{ color: '#e2e8f0', callback: v => v+'%', font: {{ size: 10 }} }},
+          ticks: {{ color: '#e2e8f0', callback: v => v+'%', font: {{ size: 13, weight: '600' }} }},
           grid: {{ color: '#1e293b' }},
-          title: {{ display: true, text: 'Pump price YTD (%)', color: '#e2e8f0', font: {{ size: 10 }} }},
+          title: {{ display: true, text: 'Pump price YTD (%)', color: '#e2e8f0', font: {{ size: 13, weight: '600' }} }},
         }},
         y2: {{
           type: 'linear',
           position: 'right',
-          ticks: {{ color: '#e2e8f0', callback: v => v+'%', font: {{ size: 10 }} }},
+          ticks: {{ color: '#e2e8f0', callback: v => v+'%', font: {{ size: 13, weight: '600' }} }},
           grid: {{ display: false }},
-          title: {{ display: true, text: 'Brent YTD (%)', color: '#e2e8f0', font: {{ size: 10 }} }},
+          title: {{ display: true, text: 'Brent YTD (%)', color: '#e2e8f0', font: {{ size: 13, weight: '600' }} }},
         }}
       }}
     }},
@@ -1423,7 +1423,7 @@ function buildTaxCharts() {{
   }};
 
   const baseOpts = {{
-    responsive: true, maintainAspectRatio: false,
+    responsive: true, maintainAspectRatio: false, devicePixelRatio: window.devicePixelRatio,
     plugins: {{
       legend: {{ labels: {{ color:'#94a3b8', font:{{ size:10 }} }} }},
       tooltip: {{
@@ -1521,7 +1521,7 @@ function switchCons(mode) {{
 // Shared legend options for both cons charts (no generateLabels override — let Chart.js do it correctly)
 function consLegendOpts(tooltipFmt) {{
   return {{
-    responsive: true, maintainAspectRatio: false,
+    responsive: true, maintainAspectRatio: false, devicePixelRatio: window.devicePixelRatio,
     plugins: {{
       legend: {{
         position: 'top',
@@ -1650,7 +1650,7 @@ function buildSensitivity() {{
         ],
       }},
       options: {{
-        responsive: true, maintainAspectRatio: false,
+        responsive: true, maintainAspectRatio: false, devicePixelRatio: window.devicePixelRatio,
         plugins: {{
           legend: {{ labels: {{ color: '#94a3b8', font: {{ size: 11 }} }} }},
           tooltip: {{
@@ -1663,9 +1663,9 @@ function buildSensitivity() {{
           x: {{ ticks: {{ color: '#e2e8f0', font: {{ size: 12, weight: 700 }} }}, grid: {{ color: '#1e293b' }} }},
           y: {{
             min: 0, max: 10,
-            ticks: {{ color: '#e2e8f0', callback: v => v.toFixed(1), font: {{ size: 10 }} }},
+            ticks: {{ color: '#e2e8f0', callback: v => v.toFixed(1), font: {{ size: 13, weight: '600' }} }},
             grid: {{ color: '#1e293b' }},
-            title: {{ display: true, text: '€ cents/L · $10 Brent', color: '#e2e8f0', font: {{ size: 10 }} }},
+            title: {{ display: true, text: '€ cents/L · $10 Brent', color: '#e2e8f0', font: {{ size: 13, weight: '600' }} }},
           }},
         }},
       }},

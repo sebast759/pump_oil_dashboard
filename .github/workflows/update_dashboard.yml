@@ -2,8 +2,8 @@ name: Update Oil Dashboard
 
 on:
   schedule:
-    # Every Thursday at 14:00 UTC — EC publishes the bulletin Thursday morning
-    - cron: '0 14 * * 4'
+    # Every day at 14:30 UTC — updates Brent daily, picks up new EC bulletin on Thursdays
+    - cron: '30 14 * * *'
   workflow_dispatch:  # allow manual trigger from the Actions tab
 
 jobs:
