@@ -1893,7 +1893,7 @@ Output (default):
     data = extract_data(xlsx_path, local=args.local)
     html = build_html(data)
 
-    github_token = os.environ.get("GITHUB_TOKEN")
+    github_token = os.environ.get("PAGES_TOKEN")
 
     if github_token and not args.no_push:
         # Heroku / CI: push directly via GitHub API — no local git repo needed
