@@ -1,0 +1,34 @@
+name: Update Oil Dashboard
+
+on:
+  schedule:
+    # Every Thursday at 14:00 UTC — EC publishes the bulletin Thursday morning
+    - cron: '0 14 * * 4'
+  workflow_dispatch:  # allow manual trigger from the Actions tab
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate and publish dashboard
+        env:
+          # PAGES_TOKEN must be a Personal Access Token (repo scope)
+          # stored as a secret in this repo: Settings → Secrets → PAGES_TOKEN
+          # (the default GITHUB_TOKEN can only write to the current repo;
+          #  a PAT is needed to push to sebast759/sebast759.github.io)
+          GITHUB_TOKEN: ${{ secrets.PAGES_TOKEN }}
+          GITHUB_REPO: sebast759/sebast759.github.io
+          GITHUB_FILE_PATH: oil_dashboard/index.html
+        run: python generate_oil_dashboard.py

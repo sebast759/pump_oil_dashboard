@@ -1,0 +1,15 @@
+# Cached data — regenerated on each run, never commit
+brent_cache.csv
+*.xlsx
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# OS
+.DS_Store
+Thumbs.db
