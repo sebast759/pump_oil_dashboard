@@ -168,7 +168,7 @@ def _load_brent_cache(date_strs: list) -> tuple:
     aligned = [brent_map.get(ds) for ds in date_strs]
     latest_yr = int(date_strs[-1][:4])
     jan1_str  = f"{latest_yr}-01-01"
-    jan_idx   = next((i for i, ds in enumerate(date_strs) if ds >= jan1_str), 0)
+    jan_idx   = max(0, next((i for i, ds in enumerate(date_strs) if ds >= jan1_str), 0) - 1)
     base = next((v for v in aligned[jan_idx:] if v), None)
     last = next((v for v in reversed(aligned) if v), None)
     brent_ytd = round((last / base - 1) * 100, 2) if base and last else None
@@ -236,7 +236,7 @@ def fetch_brent(date_strs: list, local: bool = False) -> tuple:
         # YTD %
         latest_yr = int(date_strs[-1][:4])
         jan1_str  = f"{latest_yr}-01-01"
-        jan_idx   = next((i for i, ds in enumerate(date_strs) if ds >= jan1_str), 0)
+        jan_idx   = max(0, next((i for i, ds in enumerate(date_strs) if ds >= jan1_str), 0) - 1)
         base = next((v for v in aligned[jan_idx:] if v), None)
         last = next((v for v in reversed(aligned) if v), None)
         brent_ytd = round((last / base - 1) * 100, 2) if base and last else None
@@ -314,6 +314,13 @@ def fmt_date(d):
     return f"{months[d.month]} {str(d.year)[2:]}"
 
 
+def fmt_date_full(d):
+    """datetime → 'd Mon YY' label for chart axis (e.g. '5 Jan 26')."""
+    months = ["","Jan","Feb","Mar","Apr","May","Jun",
+              "Jul","Aug","Sep","Oct","Nov","Dec"]
+    return f"{d.day} {months[d.month]} {str(d.year)[2:]}"
+
+
 def compute_sensitivity(brent: list, fuel: list, window: int = 4, lag: int = 1):
     """OLS slope through origin, split by direction of Brent move.
 
@@ -359,9 +366,10 @@ def extract_data(xlsx_path: Path, local: bool = False) -> dict:
     # Take last WEEKS_BACK
     data_rows = data_rows[-WEEKS_BACK:]
 
-    dates       = [r[0] for _, r in data_rows]
-    date_labels = [fmt_date(d) for d in dates]
-    date_strs   = [d.strftime("%Y-%m-%d") for d in dates]
+    dates            = [r[0] for _, r in data_rows]
+    date_labels      = [fmt_date(d) for d in dates]
+    date_labels_full = [fmt_date_full(d) for d in dates]
+    date_strs        = [d.strftime("%Y-%m-%d") for d in dates]
 
     # Column maps for each country
     col_tax = {c: col_indices(tax_headers, c, "with_tax") for c in COUNTRIES}
@@ -417,8 +425,8 @@ def extract_data(xlsx_path: Path, local: bool = False) -> dict:
     # ---- YTD % CHANGE ---------------------------------------------------
     ytd = {}
     jan1 = date(dates[-1].year, 1, 1)
-    # Find first date >= Jan 1 of latest year
-    jan_idx = next((i for i, d in enumerate(dates) if d.date() >= jan1), 0)
+    # Use last week of prior year as base (one step before the first date >= Jan 1)
+    jan_idx = max(0, next((i for i, d in enumerate(dates) if d.date() >= jan1), 0) - 1)
 
     for c in COUNTRIES:
         s95  = countries_data[c]["euro95"]
@@ -471,7 +479,7 @@ def extract_data(xlsx_path: Path, local: bool = False) -> dict:
     brent_prices, brent_ytd, brent_latest = fetch_brent(date_strs, local=local)
 
     # Brent absolute YTD change ($/bbl)
-    brent_jan_idx = next((i for i, ds in enumerate(date_strs) if ds >= f"{dates[-1].year}-01-01"), 0)
+    brent_jan_idx = max(0, next((i for i, ds in enumerate(date_strs) if ds >= f"{dates[-1].year}-01-01"), 0) - 1)
     brent_base    = next((v for v in brent_prices[brent_jan_idx:] if v), None)
     brent_last    = next((v for v in reversed(brent_prices) if v), None)
     brent_abs     = round(brent_last - brent_base, 2) if brent_base and brent_last else None
@@ -509,6 +517,7 @@ def extract_data(xlsx_path: Path, local: bool = False) -> dict:
     return {
         "dates":       date_strs,
         "labels":      date_labels,
+        "labels_full": date_labels_full,
         "countries":   countries_data,
         "ytd":         ytd,
         "consumption": consumption,
@@ -763,6 +772,7 @@ canvas {{ max-width: 100%; }}
     <div class="section-title">YTD Performance <span id="ytd-year"></span></div>
     <div class="section-sub">Change from Jan 1 through latest data point</div>
     <div class="grid-7" id="ytd-cards"></div>
+    <div id="ytd-insight"></div>
     <div class="card">
       <div class="card-header"><span class="card-title">YTD Price Change</span><span class="card-sub">€/L for pump prices · $/bbl for Brent</span></div>
       <div class="chart-wrap" style="height:340px;">
@@ -1115,7 +1125,8 @@ function buildHistChart() {{
 function updateHistChart() {{
   const total = DATA.dates.length;
   const start = currentRange === 0 ? 0 : Math.max(0, total - currentRange);
-  histChart.data.labels = DATA.labels.slice(start);
+  const lblSrc = (currentRange === DATA.ytd_weeks) ? DATA.labels_full : DATA.labels;
+  histChart.data.labels = lblSrc.slice(start);
   histChart.data.datasets.forEach((ds, i) => {{
     if (ds.label === 'Brent') {{
       ds.data = DATA.brent.slice(start).map(v => v != null ? +v.toFixed(2) : null);
@@ -1257,6 +1268,39 @@ function buildYTD() {{
       <div class="ytd-sub">$/barrel</div>
       <div class="ytd-val ${{clsB}} mono">${{(DATA.brent_ytd>0?'+':'')+DATA.brent_ytd.toFixed(2)+'%'}}</div>`;
     wrap.appendChild(el);
+  }}
+
+  // ---- Expected vs Actual insight box ------------------------------------
+  if (DATA.brent_abs != null) {{
+    const brentMove   = DATA.brent_abs;   // $/bbl YTD
+    // Avg sensitivity slope (eurocents/L per $10 Brent) across diesel + 95, 4W lag1W
+    const sensD   = DATA.sensitivity.diesel.research['4_1'].up;
+    const sens95  = DATA.sensitivity.euro95.research['4_1'].up;
+    const avgSens = (sensD + sens95) / 2;                    // eurocents/L per $10
+    const expectedCents = (brentMove / 10) * avgSens;        // eurocents/L
+    const expectedEuro  = (expectedCents / 100).toFixed(2);  // €/L
+
+    // Actual EU avg diesel change (countries excl. EU aggregate)
+    const ctrsNoEU = CTRS.filter(c => c !== 'EU');
+    const actualDiesel = ctrsNoEU
+      .map(c => DATA.ytd[c].diesel_abs)
+      .filter(v => v != null);
+    const avgActual = actualDiesel.reduce((s,v) => s+v, 0) / actualDiesel.length;
+    const overshootPct = Math.round((avgActual / (expectedCents/100) - 1) * 100);
+    const sign = brentMove >= 0 ? '+' : '';
+
+    $('ytd-insight').innerHTML = `
+      <div style="margin:12px 0;padding:14px 20px;background:rgba(245,158,11,0.08);
+                  border:1px solid rgba(245,158,11,0.3);border-radius:10px;
+                  font-size:13px;line-height:1.7;color:#cbd5e1;">
+        <span style="color:#f59e0b;font-weight:700;">Model check · Brent YTD ${{sign}}$${{brentMove.toFixed(2)}}/bbl</span><br>
+        At our pass-through sensitivity of
+        <strong style="color:#f1f5f9;">+${{avgSens.toFixed(1)}}¢/L per $10 Brent</strong>,
+        a ${{sign}}$${{brentMove.toFixed(2)}} move implies an expected pump price change of
+        <strong style="color:#f1f5f9;">~${{brentMove >= 0 ? '+' : ''}}${{expectedEuro}}€/L</strong>.<br>
+        Actual EU diesel average: <strong style="color:#f59e0b;">${{avgActual >= 0 ? '+' : ''}}${{avgActual.toFixed(2)}}€/L</strong>
+        — <strong style="color:#f87171;">${{Math.abs(overshootPct)}}% ${{overshootPct > 0 ? 'above' : 'below'}} model</strong>.
+      </div>`;
   }}
 
   // Bar chart
