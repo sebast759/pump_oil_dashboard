@@ -10,9 +10,11 @@ HTML dashboard with:
   - Consumption mix by country
 
 Usage:
-    python generate_oil_dashboard.py                     # uses file in same folder
-    python generate_oil_dashboard.py path/to/file.xlsx   # explicit path
-    python generate_oil_dashboard.py --output my.html    # custom output name
+    python generate_oil_dashboard.py --local             # quick local build using cached data
+    python generate_oil_dashboard.py --no-push           # refresh online data without publishing
+    python generate_oil_dashboard.py path/to/file.xlsx   # use a specific Excel file
+    python generate_oil_dashboard.py --local --output my.html
+                                                        # custom local output file
 
 Requirements:
     pip install openpyxl
@@ -25,7 +27,7 @@ import math
 import base64
 import argparse
 from pathlib import Path
-from datetime import datetime, date, timezone
+from datetime import datetime, date, timezone, timedelta
 
 try:
     import openpyxl
@@ -370,6 +372,12 @@ def extract_data(xlsx_path: Path, local: bool = False) -> dict:
     date_labels      = [fmt_date(d) for d in dates]
     date_labels_full = [fmt_date_full(d) for d in dates]
     date_strs        = [d.strftime("%Y-%m-%d") for d in dates]
+    # Pump prices lag Brent by one week. The history chart therefore extends
+    # one week beyond the pump series so the latest Brent observation remains
+    # visible after being shifted to the following pump-price week.
+    chart_dates       = dates + [dates[-1] + timedelta(days=7)]
+    chart_labels      = [fmt_date(d) for d in chart_dates]
+    chart_labels_full = [fmt_date_full(d) for d in chart_dates]
 
     # Column maps for each country
     col_tax = {c: col_indices(tax_headers, c, "with_tax") for c in COUNTRIES}
@@ -518,6 +526,8 @@ def extract_data(xlsx_path: Path, local: bool = False) -> dict:
         "dates":       date_strs,
         "labels":      date_labels,
         "labels_full": date_labels_full,
+        "chart_labels":      chart_labels,
+        "chart_labels_full": chart_labels_full,
         "countries":   countries_data,
         "ytd":         ytd,
         "consumption": consumption,
@@ -743,11 +753,11 @@ canvas {{ max-width: 100%; }}
           <button class="toggle-btn active" id="btnD" onclick="switchFuel('diesel')">Diesel</button>
         </div>
         <div class="toggle-row">
-          <button class="toggle-btn" id="btnYTD" onclick="setRange(DATA.ytd_weeks)">YTD</button>
+          <button class="toggle-btn active" id="btnYTD" onclick="setRange(DATA.ytd_weeks)">YTD</button>
           <button class="toggle-btn" id="btn1Y" onclick="setRange(52)">1Y</button>
           <button class="toggle-btn" id="btn3Y" onclick="setRange(156)">3Y</button>
           <button class="toggle-btn" id="btn5Y" onclick="setRange(260)">5Y</button>
-          <button class="toggle-btn active" id="btnAll" onclick="setRange(0)">ALL</button>
+          <button class="toggle-btn" id="btnAll" onclick="setRange(0)">ALL</button>
         </div>
       </div>
     </div>
@@ -950,7 +960,7 @@ const FUEL_TYPES = ["Gasoline","Diesel","Heating Oil","Fuel Oil","LPG"];
 const $ = id => document.getElementById(id);
 let histChart, ytdChart, tax95Chart, taxDChart, consAbsChart, consMixChart;
 let currentFuel  = 'diesel';
-let currentRange = 0;          // 52 = 1Y; 156 = 3Y; 260 = 5Y; 0 = ALL
+let currentRange = DATA.ytd_weeks;
 let currentCons  = 'absolute';
 
 function fmtVal(v, decimals=1) {{
@@ -966,6 +976,7 @@ document.addEventListener('DOMContentLoaded', () => {{
 
   buildBadges();
   buildHistChart();
+  setRange(DATA.ytd_weeks);
   buildPriceChart();
   buildYTD();
   buildTaxCharts();
@@ -1070,7 +1081,10 @@ function buildHistChart() {{
   // Brent crude — left axis (rose)
   datasets.push({{
     label: 'Brent',
-    data: DATA.brent.map(v => v != null ? +v.toFixed(2) : null),
+    // Plot each Brent reading against the following week's pump-price date.
+    // The leading null shifts the curve right; the final value occupies the
+    // chart's extra weekly label after the latest pump observation.
+    data: [null, ...DATA.brent.map(v => v != null ? +v.toFixed(2) : null)],
     borderColor: '#fdffbf',
     backgroundColor: 'transparent',
     borderWidth: 1.5,
@@ -1083,7 +1097,7 @@ function buildHistChart() {{
 
   histChart = new Chart(ctx, {{
     type: 'line',
-    data: {{ labels: DATA.labels, datasets }},
+    data: {{ labels: DATA.chart_labels, datasets }},
     options: {{
       responsive: true, maintainAspectRatio: false, devicePixelRatio: window.devicePixelRatio,
       plugins: {{
@@ -1125,11 +1139,11 @@ function buildHistChart() {{
 function updateHistChart() {{
   const total = DATA.dates.length;
   const start = currentRange === 0 ? 0 : Math.max(0, total - currentRange);
-  const lblSrc = (currentRange === DATA.ytd_weeks) ? DATA.labels_full : DATA.labels;
+  const lblSrc = (currentRange === DATA.ytd_weeks) ? DATA.chart_labels_full : DATA.chart_labels;
   histChart.data.labels = lblSrc.slice(start);
   histChart.data.datasets.forEach((ds, i) => {{
     if (ds.label === 'Brent') {{
-      ds.data = DATA.brent.slice(start).map(v => v != null ? +v.toFixed(2) : null);
+      ds.data = [null, ...DATA.brent].slice(start).map(v => v != null ? +v.toFixed(2) : null);
     }} else {{
       const c = CTRS[i];
       ds.data = DATA.countries[c][currentFuel].slice(start).map(v => v != null ? +(v/1000).toFixed(4) : null);
