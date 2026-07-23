@@ -2029,11 +2029,15 @@ def git_push(ghpages_repo: Path, webpage_name: str):
     if result.returncode != 0:
         subprocess.run(["git", "commit", "-m", f"Update {webpage_name} dashboard"],
                        cwd=ghpages_repo, check=True)
-        subprocess.run(["git", "pull", "--rebase"], cwd=ghpages_repo, check=True)
-        subprocess.run(["git", "push"], cwd=ghpages_repo, check=True)
-        print(f"  Live at https://sebast759.github.io/{webpage_name}/")
     else:
         print("  No changes to push.")
+
+    # Preserve unrelated local edits in the Pages repo while synchronising.
+    # This also resumes publishing cleanly after a previous pull/push failure.
+    subprocess.run(["git", "pull", "--rebase", "--autostash", "-X", "theirs"],
+                   cwd=ghpages_repo, check=True)
+    subprocess.run(["git", "push"], cwd=ghpages_repo, check=True)
+    print(f"  Live at https://sebast759.github.io/{webpage_name}/")
 
 
 def main():
