@@ -2,7 +2,7 @@
 
 Auto-generated dashboard tracking EU retail fuel prices (diesel & Euro-95) across France, Germany, Netherlands, Spain, Italy and Portugal — with Brent crude overlay, YTD performance, tax breakdown, consumption mix and pass-through sensitivity analysis.
 
-**Live dashboard → [sebast759.github.io/oil_dashboard](https://sebast759.github.io/oil_dashboard/)**
+**Live dashboard → [fuelforecast.eu](https://fuelforecast.eu/)**
 
 ---
 

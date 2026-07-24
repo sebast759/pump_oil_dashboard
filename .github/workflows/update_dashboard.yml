@@ -1,14 +1,28 @@
 name: Update Oil Dashboard
 
 on:
+  push:
+    branches: [main]
   schedule:
     # Every day at 14:30 UTC — updates Brent daily, picks up new EC bulletin on Thursdays
     - cron: '30 14 * * *'
   workflow_dispatch:  # allow manual trigger from the Actions tab
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
 jobs:
   update:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
 
     steps:
       - name: Checkout script repo
@@ -30,26 +44,17 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
       - name: Generate dashboard
-        run: python generate_oil_dashboard.py --no-push --output dashboard/index.html
+        run: python generate_oil_dashboard.py --output site/index.html
 
-      - name: Checkout Pages repo
-        uses: actions/checkout@v4
+      - name: Upload dashboard
+        uses: actions/upload-pages-artifact@v3
         with:
-          repository: sebast759/sebast759.github.io
-          path: website
-          token: ${{ secrets.GH_PAT }}
+          path: site
 
-      - name: Copy dashboard to Pages repo
-        run: |
-          mkdir -p website/oil_dashboard
-          cp dashboard/index.html website/oil_dashboard/index.html
-
-      - name: Commit and push
-        run: |
-          cd website
-          git config user.name "GitHub Actions Bot"
-          git config user.email "actions@github.com"
-          git add oil_dashboard/index.html
-          git diff --cached --quiet || git commit -m "Update oil dashboard $(date +'%Y-%m-%d %H:%M UTC')"
-          git push
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
