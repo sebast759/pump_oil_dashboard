@@ -756,7 +756,7 @@ button.history-legend-item {{ cursor: pointer; transition: opacity .15s, color .
 }}
 .refuel-action, .refuel-detail {{ display: block; }}
 .refuel-detail {{ font-size: .56em; font-weight: 700; margin-top: 5px; letter-spacing: 0; }}
-.refuel-context {{ color: #94a3b8; font-size: 13px; font-weight: 600; margin-top: 9px; }}
+.refuel-context {{ color: #f1f5f9; font-size: 13px; font-weight: 700; margin-top: 9px; }}
 .refuel-context-line {{ display: block; }}
 .refuel-context-line + .refuel-context-line {{ margin-top: 3px; }}
 @media (max-width: 700px) {{
@@ -1063,13 +1063,14 @@ canvas {{ max-width: 100%; }}
   <!-- TAB 5: About & Sources -->
   <div class="panel" id="tab5">
     <div class="about-hero">
-      <h2>Understanding fuel prices — and what may happen next</h2>
+      <h2>Should you refuel now or wait a week?</h2>
       <p>
-        This dashboard brings together official European pump prices, daily Brent
-        spot prices and a simple short-term pass-through model. It is designed to
-        answer two practical questions: how fuel prices are changing across
-        Europe, and whether the latest crude-oil move points to higher or lower
-        pump prices next week.
+        Crude moves first, pump prices follow with a lag of about a week.
+        This tool tracks that lag across Europe and turns the latest Brent move
+        into one practical signal: fill up now, or wait.
+      </p>
+      <p style="margin-top:12px;color:#93c5fd;font-weight:700;">
+        Official EU pump prices, weekly. Brent spot, daily.
       </p>
     </div>
 
@@ -1112,26 +1113,24 @@ canvas {{ max-width: 100%; }}
 
     <div class="grid-2">
       <div class="card about-copy">
-        <h3>How the Brent series is constructed</h3>
+        <h3>What we watch</h3>
         <ul>
-          <li>Official FRED spot prices always take priority.</li>
-          <li>Adjusted Yahoo observations fill genuine missing trading dates.</li>
-          <li>The adjustment matches futures to spot on their latest common trading date.</li>
-          <li>Weekends and market holidays are not interpolated or invented.</li>
-          <li>Yahoo's recent data are refreshed on every online dashboard run.</li>
+          <li>What drivers pay for diesel and SP95 across Europe each week.</li>
+          <li>How Brent crude moves from one day to the next.</li>
+          <li>How prices, taxes and fuel habits differ between countries.</li>
+          <li>Fresh Brent prices whenever the dashboard updates.</li>
         </ul>
       </div>
       <div class="card about-copy">
-        <h3>How to interpret the forecast</h3>
+        <h3>How to use the signal</h3>
         <p>
-          The one-week outlook is indicative, not a quoted future retail price.
-          It applies the observed historical sensitivity of diesel or SP95 to the
-          latest Brent move. Taxes, exchange rates, refining margins, inventories
-          and local competition can cause actual pump prices to differ.
+          If Brent jumps, filling up now could help you get ahead of the next
+          pump-price rise. If Brent falls, waiting a week could save you money.
+          If very little has changed, there is no rush either way.
         </p>
         <p style="margin-top:10px;">
-          The dashboard is informational and should not be treated as financial,
-          trading or purchasing advice.
+          Think of it as a helpful heads-up, not a promise. Your local price can
+          still move differently.
         </p>
       </div>
     </div>
