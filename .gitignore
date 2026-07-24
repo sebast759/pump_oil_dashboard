@@ -2,7 +2,6 @@
 brent_cache.csv
 *.xlsx
 .cache/
-/index.html
 
 # Python
 __pycache__/

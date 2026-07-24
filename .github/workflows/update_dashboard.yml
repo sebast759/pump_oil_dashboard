@@ -3,13 +3,15 @@ name: Update Oil Dashboard
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - index.html
   schedule:
     # Every day at 14:30 UTC — updates Brent daily, picks up new EC bulletin on Thursdays
     - cron: '30 14 * * *'
   workflow_dispatch:  # allow manual trigger from the Actions tab
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
@@ -49,6 +51,15 @@ jobs:
 
       - name: Generate dashboard
         run: python generate_oil_dashboard.py --output site/index.html
+
+      - name: Commit generated dashboard
+        run: |
+          cp site/index.html index.html
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
+          git add index.html
+          git diff --cached --quiet || git commit -m "Update generated fuel dashboard"
+          git push
 
       - name: Upload dashboard
         uses: actions/upload-pages-artifact@v3
