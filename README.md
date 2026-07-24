@@ -112,3 +112,32 @@ pump_oil_dashboard/
 | Fuel prices (with/without tax) | [EC Weekly Oil Bulletin](https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en) | Weekly (Thursday) |
 | Brent crude | Yahoo Finance (`BZ=F`) | Weekly + latest daily |
 | Consumption mix | EC Oil Bulletin (Consumption sheet) | Annual |
+
+## Continuous Brent spot series
+
+`brent_spot.py` combines the official FRED `DCOILBRENTEU` spot series with
+Yahoo Finance `BZ=F` closes. FRED observations take priority. Level-adjusted
+Yahoo values fill missing FRED trading days and extend the series after the
+last common trading date.
+
+```python
+from brent_spot import get_continuous_brent_spot
+
+brent = get_continuous_brent_spot(
+    start="2020-01-01",
+    adjustment="rolling",  # or "constant"
+    rolling_window=20,
+)
+```
+
+Provider downloads are cached under `.cache/brent`. After the first complete
+download, refreshes retrieve only the latest 45 calendar days and merge any
+FRED revisions into the local history. The dashboard caches FRED for six
+hours, but refreshes Yahoo's recent tail on every online run. GitHub Actions
+persists the historical cache between scheduled runs.
+Run the tests and comparison plot with:
+
+```bash
+python -m unittest discover -s tests -v
+python -m examples.plot_brent_spot
+```

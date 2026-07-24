@@ -19,6 +19,14 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Restore Brent provider cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/brent
+          key: brent-data-${{ runner.os }}-${{ github.run_id }}
+          restore-keys: |
+            brent-data-${{ runner.os }}-
+
       - name: Install dependencies
         run: pip install -r requirements.txt
 

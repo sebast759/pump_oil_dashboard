@@ -26,6 +26,7 @@ import json
 import math
 import base64
 import argparse
+import tempfile
 from pathlib import Path
 from datetime import datetime, date, timezone, timedelta
 
@@ -136,14 +137,22 @@ def resolve_xlsx(input_arg: str, force_download: bool, cache_dir: Path, local: b
 BRENT_CACHE_CSV = Path(__file__).parent / "brent_cache.csv"
 
 
-def _save_brent_cache(date_strs: list, aligned: list, brent_latest: dict | None):
-    """Save weekly Brent prices + latest daily quote to CSV cache."""
+def _save_brent_cache(
+    date_strs: list,
+    aligned: list,
+    brent_latest: dict | None,
+    daily_dates: list[str] | None = None,
+    daily_prices: list[float] | None = None,
+):
+    """Save aligned weekly and daily Brent prices to the offline cache."""
     import csv
     with open(BRENT_CACHE_CSV, "w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         w.writerow(["date", "price"])
         for ds, price in zip(date_strs, aligned):
             w.writerow([ds, price if price is not None else ""])
+        for ds, price in zip(daily_dates or [], daily_prices or []):
+            w.writerow([f"daily:{ds}", price])
         if brent_latest:
             w.writerow([f"latest:{brent_latest['date']}", brent_latest["price"]])
 
@@ -155,6 +164,7 @@ def _load_brent_cache(date_strs: list) -> tuple:
         return [None] * len(date_strs), None, None
     brent_map = {}
     brent_latest = None
+    daily_map = {}
     with open(BRENT_CACHE_CSV, newline="", encoding="utf-8") as f:
         for row in csv.reader(f):
             if len(row) < 2 or row[0] == "date":
@@ -165,6 +175,8 @@ def _load_brent_cache(date_strs: list) -> tuple:
             price = float(val)
             if key.startswith("latest:"):
                 brent_latest = {"price": price, "date": key[7:]}
+            elif key.startswith("daily:"):
+                daily_map[key[6:]] = price
             else:
                 brent_map[key] = price
     aligned = [brent_map.get(ds) for ds in date_strs]
@@ -176,64 +188,60 @@ def _load_brent_cache(date_strs: list) -> tuple:
     brent_ytd = round((last / base - 1) * 100, 2) if base and last else None
     found = sum(1 for v in aligned if v is not None)
     print(f"  Brent (cache): {found}/{len(date_strs)} weeks loaded")
-    return aligned, brent_ytd, brent_latest
+    daily_dates = sorted(daily_map)
+    return aligned, brent_ytd, brent_latest, daily_dates, [daily_map[d] for d in daily_dates]
 
 
 def fetch_brent(date_strs: list, local: bool = False) -> tuple:
     """
-    Download weekly Brent crude (BZ=F) from Yahoo Finance.
-    Saves results to brent_cache.csv; falls back to cache on failure.
+    Load official daily Brent spot data, extended with adjusted Yahoo BZ=F.
+
+    EC weekly dates are aligned to the latest available trading observation on
+    or before that date. Provider downloads are incrementally cached by
+    ``brent_spot``; this legacy weekly cache remains the offline fallback.
     Returns (aligned_prices, brent_ytd_pct, brent_latest).
     """
     if local:
-        print("  [LOCAL] Skipping Yahoo Finance — loading Brent from cache ...")
-        return _load_brent_cache(date_strs)
-
-    import urllib.request, json
-    from datetime import datetime, timedelta
-
-    HEADERS = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept": "application/json",
-    }
-
-    def yf_get(path: str) -> dict:
-        """Try query1 then query2 Yahoo Finance hosts."""
-        for host in ("query1.finance.yahoo.com", "query2.finance.yahoo.com"):
-            url = f"https://{host}{path}"
-            try:
-                req = urllib.request.Request(url, headers=HEADERS)
-                with urllib.request.urlopen(req, timeout=30) as r:
-                    return json.loads(r.read())
-            except Exception as e:
-                print(f"  {host} failed: {e}")
-        raise RuntimeError(f"Both Yahoo Finance hosts failed for {path}")
+        print("  [LOCAL] Skipping FRED/Yahoo — loading Brent from cache ...")
+        cached = _load_brent_cache(date_strs)
+        if cached[3]:
+            return cached
+        try:
+            import pandas as pd
+            from brent_spot import get_continuous_brent_spot
+            spot = get_continuous_brent_spot(
+                start=date_strs[0],
+                end=date.today(),
+                cache_dir=Path(__file__).parent / ".cache" / "brent",
+                cache_ttl=timedelta(days=36500),
+                yahoo_cache_ttl=timedelta(days=36500),
+            )
+            return (*cached[:3], [d.strftime("%Y-%m-%d") for d in spot.index],
+                    [round(float(v), 2) for v in spot])
+        except Exception:
+            return cached
 
     try:
-        start_dt = datetime.strptime(date_strs[0], "%Y-%m-%d") - timedelta(days=14)
-        end_ts   = int(datetime.now().timestamp())
-        start_ts = int(start_dt.timestamp())
-        path = f"/v8/finance/chart/BZ=F?period1={start_ts}&period2={end_ts}&interval=1wk"
-        raw = yf_get(path)
-        if raw.get("chart", {}).get("error"):
-            raise RuntimeError(f"Yahoo API error: {raw['chart']['error']}")
-        result  = raw["chart"]["result"][0]
-        tss     = result["timestamp"]
-        closes  = result["indicators"]["quote"][0]["close"]
+        import pandas as pd
+        from brent_spot import get_continuous_brent_spot
 
-        # Build lookup with ±4-day window so Monday EC dates match Friday Yahoo bars
-        brent_map = {}
-        for ts, price in zip(tss, closes):
-            if price is None:
-                continue
-            d = datetime.fromtimestamp(ts, tz=timezone.utc).replace(tzinfo=None)
-            for offset in range(-4, 5):
-                key = (d + timedelta(days=offset)).strftime("%Y-%m-%d")
-                brent_map.setdefault(key, round(price, 2))
+        start_dt = pd.Timestamp(date_strs[0]) - pd.Timedelta(days=14)
+        spot = get_continuous_brent_spot(
+            start=start_dt,
+            end=date.today(),
+            adjustment="constant",
+            cache_dir=Path(__file__).parent / ".cache" / "brent",
+            cache_ttl=timedelta(hours=6),
+            yahoo_cache_ttl=timedelta(0),
+            refresh_lookback_days=45,
+        )
 
-        aligned = [brent_map.get(ds) for ds in date_strs]
+        aligned = []
+        for ds in date_strs:
+            value = spot.asof(pd.Timestamp(ds))
+            aligned.append(round(float(value), 2) if pd.notna(value) else None)
         found   = sum(1 for v in aligned if v is not None)
-        print(f"  Brent (Yahoo BZ=F): {found}/{len(date_strs)} weeks matched")
+        print(f"  Brent spot (FRED + adjusted Yahoo): {found}/{len(date_strs)} weeks matched")
 
         # YTD %
         latest_yr = int(date_strs[-1][:4])
@@ -243,21 +251,23 @@ def fetch_brent(date_strs: list, local: bool = False) -> tuple:
         last = next((v for v in reversed(aligned) if v), None)
         brent_ytd = round((last / base - 1) * 100, 2) if base and last else None
 
-        # Latest daily quote
-        brent_latest = None
-        daily_raw = yf_get("/v8/finance/chart/BZ=F?range=5d&interval=1d")
-        d_res    = daily_raw["chart"]["result"][0]
-        d_tss    = d_res["timestamp"]
-        d_closes = d_res["indicators"]["quote"][0]["close"]
-        for ts2, price2 in zip(reversed(d_tss), reversed(d_closes)):
-            if price2 is not None:
-                d2 = datetime.fromtimestamp(ts2, tz=timezone.utc).strftime("%Y-%m-%d")
-                brent_latest = {"price": round(price2, 2), "date": d2}
-                print(f"  Brent latest daily: ${price2:.2f} ({d2})")
-                break
+        latest_date = spot.index[-1]
+        latest_price = float(spot.iloc[-1])
+        brent_latest = {
+            "price": round(latest_price, 2),
+            "date": latest_date.strftime("%Y-%m-%d"),
+        }
+        print(
+            f"  Brent latest continuous spot: "
+            f"${latest_price:.2f} ({brent_latest['date']})"
+        )
 
-        _save_brent_cache(date_strs, aligned, brent_latest)
-        return aligned, brent_ytd, brent_latest
+        daily_dates = [d.strftime("%Y-%m-%d") for d in spot.index]
+        daily_prices = [round(float(v), 2) for v in spot]
+        _save_brent_cache(
+            date_strs, aligned, brent_latest, daily_dates, daily_prices
+        )
+        return aligned, brent_ytd, brent_latest, daily_dates, daily_prices
 
     except Exception as e:
         print(f"  WARNING: Brent download failed: {e} — using cache")
@@ -484,7 +494,13 @@ def extract_data(xlsx_path: Path, local: bool = False) -> dict:
 
     latest_year = latest_cons_row[0] if latest_cons_row[0] else "latest"
 
-    brent_prices, brent_ytd, brent_latest = fetch_brent(date_strs, local=local)
+    (
+        brent_prices,
+        brent_ytd,
+        brent_latest,
+        brent_daily_dates,
+        brent_daily_prices,
+    ) = fetch_brent(date_strs, local=local)
 
     # Brent absolute YTD change ($/bbl)
     brent_jan_idx = max(0, next((i for i, ds in enumerate(date_strs) if ds >= f"{dates[-1].year}-01-01"), 0) - 1)
@@ -538,6 +554,8 @@ def extract_data(xlsx_path: Path, local: bool = False) -> dict:
         "brent_ytd":    brent_ytd,
         "brent_abs":    brent_abs,
         "brent_latest": brent_latest,
+        "brent_daily_dates": brent_daily_dates,
+        "brent_daily": brent_daily_prices,
         "sensitivity":  sensitivity,
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
     }
@@ -554,6 +572,8 @@ def build_html(data: dict) -> str:
     fuel_colors_js = json.dumps(FUEL_COLORS)
     countries_js   = json.dumps(COUNTRIES)
     data_js        = json.dumps(data)
+    illustration_path = Path(__file__).parent / "assets" / "refuel-nozzle.png"
+    refuel_illustration = base64.b64encode(illustration_path.read_bytes()).decode()
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -687,6 +707,62 @@ tr:nth-child(even) {{ background: #080f1a; }}
 .tax-bar-aside {{ width: 100px; font-size: 11px; color: #94a3b8; text-align: right; }}
 /* Chart containers */
 .chart-wrap {{ padding: 16px 12px 8px; }}
+.history-legend {{
+  display: flex; flex-direction: column; align-items: center; gap: 7px;
+  padding: 14px 16px 0; font-size: 11px;
+}}
+.history-legend-row {{
+  display: flex; align-items: center; justify-content: center;
+  gap: 10px; flex-wrap: wrap;
+}}
+.history-legend-group {{
+  color: #64748b; font-size: 9px; font-weight: 800;
+  letter-spacing: .08em; text-transform: uppercase; min-width: 68px;
+}}
+.history-legend-item {{
+  display: inline-flex; align-items: center; gap: 5px;
+  color: #94a3b8; background: none; border: 0; padding: 2px;
+  font: inherit;
+}}
+button.history-legend-item {{ cursor: pointer; transition: opacity .15s, color .15s; }}
+.history-legend-item.dimmed {{ opacity: .25; }}
+.history-legend-item.focused {{ color: #f1f5f9; font-weight: 700; }}
+.history-legend-item.hidden {{ opacity: .3; text-decoration: line-through; }}
+.history-swatch {{ display: inline-block; width: 15px; height: 8px; border: 2px solid; }}
+.history-line {{ display: inline-block; width: 18px; border-top: 2px dashed; }}
+.history-diamond {{
+  display: inline-block; width: 7px; height: 7px;
+  border: 2px solid #94a3b8; transform: rotate(45deg);
+}}
+.refuel-callout {{
+  position: relative; width: 100%; text-align: center; margin: 0 0 24px;
+  padding: 22px 28px 20px; border-radius: 12px;
+  background: linear-gradient(135deg, rgba(15,32,64,.72), rgba(6,14,30,.92));
+  border: 1px solid #29415f;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+}}
+.refuel-illustration {{
+  position: absolute; left: 22px; top: 50%; transform: translateY(-50%);
+  width: 132px; height: 92px; object-fit: contain; opacity: .9;
+}}
+.refuel-copy {{ padding: 2px 130px; }}
+.refuel-question {{
+  color: #f8fafc; font-size: 20px; font-weight: 800;
+  letter-spacing: -.01em; margin-bottom: 7px;
+}}
+.refuel-answer {{
+  font-weight: 900; line-height: 1.08; letter-spacing: -.025em;
+  transition: font-size .2s ease, color .2s ease;
+}}
+.refuel-action, .refuel-detail {{ display: block; }}
+.refuel-detail {{ font-size: .56em; font-weight: 700; margin-top: 5px; letter-spacing: 0; }}
+.refuel-context {{ color: #94a3b8; font-size: 13px; font-weight: 600; margin-top: 9px; }}
+.refuel-context-line {{ display: block; }}
+.refuel-context-line + .refuel-context-line {{ margin-top: 3px; }}
+@media (max-width: 700px) {{
+  .refuel-illustration {{ width: 96px; left: 8px; opacity: .28; }}
+  .refuel-copy {{ padding: 2px 12px; position: relative; }}
+}}
 canvas {{ max-width: 100%; }}
 /* Info box */
 .info-box {{
@@ -698,10 +774,39 @@ canvas {{ max-width: 100%; }}
   font-size: 16px; font-weight: 700; color: #f1f5f9; margin-bottom: 4px;
 }}
 .section-sub {{ font-size: 12px; color: #94a3b8; margin-bottom: 20px; }}
+/* About & sources */
+.about-hero {{
+  padding: 28px; margin-bottom: 20px;
+  background: linear-gradient(135deg, rgba(15,32,64,.9), rgba(6,14,30,.96));
+  border: 1px solid #29415f; border-radius: 12px;
+}}
+.about-hero h2 {{ color:#f8fafc; font-size:24px; margin-bottom:10px; }}
+.about-hero p {{ color:#cbd5e1; font-size:14px; line-height:1.7; max-width:820px; }}
+.about-grid {{
+  display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:20px;
+}}
+.source-card {{
+  display:block; padding:18px; min-height:150px; color:inherit;
+  background:#060e1e; border:1px solid #1e3a5f; border-radius:10px;
+  text-decoration:none; transition:border-color .18s ease, transform .18s ease;
+}}
+.source-card:hover {{ border-color:#f59e0b; transform:translateY(-2px); }}
+.source-kicker {{
+  color:#60a5fa; font-size:10px; font-weight:800;
+  letter-spacing:.12em; text-transform:uppercase; margin-bottom:8px;
+}}
+.source-title {{ color:#f8fafc; font-size:15px; font-weight:800; margin-bottom:7px; }}
+.source-copy {{ color:#94a3b8; font-size:12px; line-height:1.55; }}
+.source-link {{ color:#f59e0b; font-size:11px; font-weight:700; margin-top:12px; }}
+.about-copy {{ padding:20px; }}
+.about-copy h3 {{ color:#f1f5f9; font-size:15px; margin-bottom:8px; }}
+.about-copy p, .about-copy li {{ color:#94a3b8; font-size:12px; line-height:1.7; }}
+.about-copy ul {{ padding-left:18px; }}
 /* Responsive */
 @media (max-width: 900px) {{
   .grid-2 {{ grid-template-columns: 1fr; }}
   .grid-7 {{ grid-template-columns: repeat(4,1fr); }}
+  .about-grid {{ grid-template-columns:1fr; }}
   .price-badges {{ display: none; }}
   .content {{ padding: 16px; }}
   .header {{ padding: 16px 16px 0; }}
@@ -732,11 +837,12 @@ canvas {{ max-width: 100%; }}
     </div>
   </div>
   <div class="tabs">
-    <button class="tab-btn active" onclick="showTab(0)">Historical Prices</button>
-    <button class="tab-btn" onclick="showTab(1)">YTD Performance</button>
-    <button class="tab-btn" onclick="showTab(2)">Tax Analysis</button>
-    <button class="tab-btn" onclick="showTab(3)">Consumption</button>
-    <button class="tab-btn" onclick="showTab(4)">Sensitivity</button>
+    <button class="tab-btn active" onclick="showTab(0)">Prices &amp; Forecast</button>
+    <button class="tab-btn" onclick="showTab(1)" id="ytd-tab-label">2026 Variation</button>
+    <button class="tab-btn" onclick="showTab(2)">How Much Tax in 1 Litre?</button>
+    <button class="tab-btn" onclick="showTab(3)">Consumption Mix: Diesel or SP95?</button>
+    <button class="tab-btn" onclick="showTab(4)">Sensitivity to Brent Price</button>
+    <button class="tab-btn" onclick="showTab(5)">About &amp; Sources</button>
   </div>
 </div>
 
@@ -745,6 +851,16 @@ canvas {{ max-width: 100%; }}
   <!-- TAB 0: Historical -->
   <div class="panel active" id="tab0">
     <div style="margin-bottom:20px;">
+      <div class="refuel-callout">
+        <img class="refuel-illustration"
+             src="data:image/png;base64,{refuel_illustration}"
+             alt="" aria-hidden="true">
+        <div class="refuel-copy">
+          <div class="refuel-question">Should I refuel now?</div>
+          <div class="refuel-answer" id="refuel-answer"></div>
+          <div class="refuel-context" id="refuel-context"></div>
+        </div>
+      </div>
       <div class="section-title" style="text-align:center;">Pump Price History (EUR/L)</div>
       <div class="section-sub" style="text-align:center;margin-bottom:14px;">Weekly consumer pump prices inclusive of taxes and duties</div>
       <div style="display:flex;flex-direction:column;gap:8px;align-items:center;">
@@ -759,10 +875,12 @@ canvas {{ max-width: 100%; }}
           <button class="toggle-btn" id="btn5Y" onclick="setRange(260)">5Y</button>
           <button class="toggle-btn" id="btnAll" onclick="setRange(0)">ALL</button>
         </div>
+        <div class="section-sub" id="history-status" style="margin-top:3px;"></div>
       </div>
     </div>
     <div class="card">
-      <div class="chart-wrap" style="height:400px;">
+      <div class="history-legend" id="history-legend"></div>
+      <div class="chart-wrap" style="height:500px;">
         <canvas id="histChart"></canvas>
       </div>
     </div>
@@ -779,7 +897,7 @@ canvas {{ max-width: 100%; }}
 
   <!-- TAB 1: YTD -->
   <div class="panel" id="tab1">
-    <div class="section-title">YTD Performance <span id="ytd-year"></span></div>
+    <div class="section-title"><span id="ytd-year"></span> Price Variation</div>
     <div class="section-sub">Change from Jan 1 through latest data point</div>
     <div class="grid-7" id="ytd-cards"></div>
     <div id="ytd-insight"></div>
@@ -942,10 +1060,87 @@ canvas {{ max-width: 100%; }}
     </div>
   </div>
 
+  <!-- TAB 5: About & Sources -->
+  <div class="panel" id="tab5">
+    <div class="about-hero">
+      <h2>Understanding fuel prices — and what may happen next</h2>
+      <p>
+        This dashboard brings together official European pump prices, daily Brent
+        spot prices and a simple short-term pass-through model. It is designed to
+        answer two practical questions: how fuel prices are changing across
+        Europe, and whether the latest crude-oil move points to higher or lower
+        pump prices next week.
+      </p>
+    </div>
+
+    <div class="section-title" style="margin-bottom:12px;">Primary data sources</div>
+    <div class="about-grid">
+      <a class="source-card"
+         href="https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en"
+         target="_blank" rel="noopener noreferrer">
+        <div class="source-kicker">Pump prices</div>
+        <div class="source-title">European Commission Weekly Oil Bulletin</div>
+        <div class="source-copy">
+          Weekly consumer prices including and excluding taxes, plus duties and
+          petroleum-consumption data for European countries.
+        </div>
+        <div class="source-link">Open official source ↗</div>
+      </a>
+      <a class="source-card"
+         href="https://fred.stlouisfed.org/series/DCOILBRENTEU"
+         target="_blank" rel="noopener noreferrer">
+        <div class="source-kicker">Official Brent spot</div>
+        <div class="source-title">FRED · DCOILBRENTEU</div>
+        <div class="source-copy">
+          Daily Europe Brent spot price in US dollars per barrel. This is the
+          preferred Brent series wherever an official observation is available.
+        </div>
+        <div class="source-link">View the FRED series ↗</div>
+      </a>
+      <a class="source-card"
+         href="https://finance.yahoo.com/quote/BZ%3DF/"
+         target="_blank" rel="noopener noreferrer">
+        <div class="source-kicker">Latest market extension</div>
+        <div class="source-title">Yahoo Finance · BZ=F</div>
+        <div class="source-copy">
+          Brent futures observations used to fill unpublished FRED trading dates
+          and extend the series beyond FRED's latest release after level adjustment.
+        </div>
+        <div class="source-link">View the Yahoo quote ↗</div>
+      </a>
+    </div>
+
+    <div class="grid-2">
+      <div class="card about-copy">
+        <h3>How the Brent series is constructed</h3>
+        <ul>
+          <li>Official FRED spot prices always take priority.</li>
+          <li>Adjusted Yahoo observations fill genuine missing trading dates.</li>
+          <li>The adjustment matches futures to spot on their latest common trading date.</li>
+          <li>Weekends and market holidays are not interpolated or invented.</li>
+          <li>Yahoo's recent data are refreshed on every online dashboard run.</li>
+        </ul>
+      </div>
+      <div class="card about-copy">
+        <h3>How to interpret the forecast</h3>
+        <p>
+          The one-week outlook is indicative, not a quoted future retail price.
+          It applies the observed historical sensitivity of diesel or SP95 to the
+          latest Brent move. Taxes, exchange rates, refining margins, inventories
+          and local competition can cause actual pump prices to differ.
+        </p>
+        <p style="margin-top:10px;">
+          The dashboard is informational and should not be treated as financial,
+          trading or purchasing advice.
+        </p>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <div style="text-align:center;padding:14px 32px;font-size:10px;color:#94a3b8;border-top:1px solid #1e293b;">
-  Generated <span id="gen-datetime"></span> · Source: European Commission Weekly Oil Bulletin &amp; Yahoo Finance
+  Generated <span id="gen-datetime"></span> · Sources: European Commission Weekly Oil Bulletin, FRED &amp; Yahoo Finance
 </div>
 
 <script>
@@ -955,6 +1150,7 @@ const COLORS = {colors_js};
 const FUEL_COLORS = {fuel_colors_js};
 const CTRS = {countries_js};
 const FUEL_TYPES = ["Gasoline","Diesel","Heating Oil","Fuel Oil","LPG"];
+const FUEL_DISPLAY = {{"Gasoline":"SP95","Diesel":"Diesel","Heating Oil":"Heating Oil","Fuel Oil":"Fuel Oil","LPG":"LPG"}};
 
 // ---- UTILS ---------------------------------------------------------------
 const $ = id => document.getElementById(id);
@@ -973,6 +1169,9 @@ document.addEventListener('DOMContentLoaded', () => {{
   const latest = DATA.dates[DATA.dates.length - 1];
   $('latest-date').textContent = latest;
   $('table-date').textContent  = latest;
+  $('history-status').textContent =
+    `Observed through ${{fmtDateLabel(latest)}} · Indicative forecast ${{DATA.chart_labels_full[DATA.dates.length]}}`;
+  updateRefuelCallout();
 
   buildBadges();
   buildHistChart();
@@ -983,6 +1182,14 @@ document.addEventListener('DOMContentLoaded', () => {{
   buildConsumption();
   buildSensitivity();
   $('gen-datetime').textContent = DATA.generated_at;
+}});
+
+let historyResizeTimer;
+window.addEventListener('resize', () => {{
+  clearTimeout(historyResizeTimer);
+  historyResizeTimer = setTimeout(() => {{
+    if (histChart) updateHistChart();
+  }}, 120);
 }});
 
 function showTab(n) {{
@@ -1026,8 +1233,8 @@ function buildBadges() {{
     wrap.appendChild(el);
   }});
 
-  // Brent badge at latest EC date
-  const brentVal = DATA.brent[last];
+  // Brent badge: use the actual latest Yahoo observation.
+  const brentVal = DATA.brent_latest?.price ?? DATA.brent[last];
   const bEl = document.createElement('div');
   bEl.className = 'badge';
   bEl.style.border = '1px solid #94a3b840';
@@ -1037,13 +1244,13 @@ function buildBadges() {{
     <div class="badge-unit">$/barrel</div>`;
   wrap.appendChild(bEl);
 
-  // ---- Line 1: Brent at EC date vs previous EC week ----------------------
-  let cur = null, prev = null, curDate = latestDate;
-  for (let i = DATA.brent.length - 1; i >= 0; i--) {{
-    if (DATA.brent[i] != null) {{
-      if (cur === null) {{ cur = DATA.brent[i]; curDate = DATA.dates[i]; }}
-      else              {{ prev = DATA.brent[i]; break; }}
-    }}
+  // Latest daily Yahoo observation versus the preceding weekly observation.
+  const bl = DATA.brent_latest;
+  const cur = bl?.price ?? DATA.brent[last];
+  const curDate = bl?.date ?? latestDate;
+  let prev = null;
+  for (let i = DATA.brent.length - 2; i >= 0; i--) {{
+    if (DATA.brent[i] != null) {{ prev = DATA.brent[i]; break; }}
   }}
   if (cur != null && prev != null) {{
     const col = (cur - prev) >= 0 ? '#ef4444' : '#10b981';
@@ -1052,71 +1259,412 @@ function buildBadges() {{
       + ` <span style="color:#94a3b8">vs prev. week</span>`;
   }}
 
-  // ---- Line 2: latest daily Yahoo quote vs EC-date Brent -----------------
-  const bl = DATA.brent_latest;
-  if (bl && bl.price != null && cur != null && bl.date !== curDate) {{
-    const diff2 = bl.price - cur;
-    const col2  = diff2 >= 0 ? '#ef4444' : '#10b981';
-    $('brent-info2').innerHTML =
-      brentInfoLine(bl.price, bl.date + ' · today', diff2, cur, col2)
-      + ` <span style="color:#94a3b8">vs EC date</span>`;
-  }}
+  $('brent-info2').innerHTML = '';
 }}
 
 // ---- HISTORICAL CHART ----------------------------------------------------
+function latestBrentMove() {{
+  const previous = DATA.brent.slice(0, -1).reverse().find(v => v != null);
+  const latest = DATA.brent_latest?.price ?? DATA.brent[DATA.brent.length - 1];
+  return latest != null && previous != null ? latest - previous : null;
+}}
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function dateX(iso, leadDays=0) {{
+  return Date.parse(iso + 'T12:00:00Z') + leadDays * DAY_MS;
+}}
+
+function displayedBrentSeries(startDate=DATA.dates[0]) {{
+  if (DATA.brent_daily_dates?.length) {{
+    return DATA.brent_daily_dates
+      .map((date, index) => ({{
+        x: dateX(date, 7),
+        y: DATA.brent_daily[index],
+        sourceDate: date
+      }}))
+      .filter(point => point.y != null && point.sourceDate >= startDate);
+  }}
+  return DATA.dates
+    .map((date, index) => ({{
+      x: dateX(date, 7),
+      y: DATA.brent[index],
+      sourceDate: date
+    }}))
+    .filter(point => point.y != null && point.sourceDate >= startDate);
+}}
+
+function forecastCoefficientForFuel(fuel, brentMove) {{
+  if (fuel === 'diesel')
+    return brentMove >= 0 ? 0.09 : 0.06;
+  return brentMove >= 0 ? 0.07 : 0.05;
+}}
+
+function forecastCoefficient(brentMove) {{
+  return forecastCoefficientForFuel(currentFuel, brentMove);
+}}
+
+function updateRefuelCallout() {{
+  const move = latestBrentMove();
+  const answer = $('refuel-answer');
+  const context = $('refuel-context');
+  if (move == null) {{
+    answer.innerHTML = '<span class="refuel-action">NO SIGNAL</span>';
+    answer.style.fontSize = '22px';
+    answer.style.color = '#94a3b8';
+    context.textContent = 'Latest Brent movement is unavailable';
+    return;
+  }}
+
+  const coefficient = forecastCoefficient(move);
+  const expectedCents = coefficient * move * 10;
+  const cents = Math.abs(Math.round(expectedCents));
+  const tankSaving = (Math.round(Math.abs(expectedCents / 100 * 50) * 10) / 10).toFixed(2);
+  const magnitude = Math.abs(move);
+  const strength = Math.max(0, Math.min(1, (magnitude - 3) / 7));
+  answer.style.fontSize = `${{(22 + strength * 10).toFixed(1)}}px`;
+  const weeklyBrent = [...DATA.brent].reverse().find(value => value != null);
+  const currentBrent = DATA.brent_latest?.price ?? weeklyBrent;
+  const brentObservationDate = DATA.brent_latest?.date
+    ? fmtDateLabel(DATA.brent_latest.date)
+    : fmtDateLabel(DATA.dates[DATA.dates.length - 1]);
+  const brentContext =
+    `Brent +$${{currentBrent.toFixed(0)}}/bbl, ` +
+    `${{move >= 0 ? '+' : '-'}}$${{Math.abs(move).toFixed(1)}}/bbl vs. prev. week ` +
+    `(${{brentObservationDate}})`;
+  const brentLine = `<span class="refuel-context-line">${{brentContext}}</span>`;
+
+  if (Math.abs(expectedCents) < 2) {{
+    answer.innerHTML = '<span class="refuel-action">NO RUSH: prices flat next week</span>';
+    answer.style.color = '#94a3b8';
+    context.innerHTML = brentLine;
+  }} else if (expectedCents > 0) {{
+    answer.innerHTML =
+      `<span class="refuel-action">GO NOW: prices rise ~ +${{cents}} cents/L next week</span>`;
+    answer.style.color = '#10b981';
+    context.innerHTML =
+      `<span class="refuel-context-line">Saves ~€${{tankSaving}} on a 50L tank</span>` +
+      brentLine;
+  }} else {{
+    answer.innerHTML =
+      `<span class="refuel-action">WAIT: prices fall ~${{cents}} cents/L next week</span>`;
+    answer.style.color = '#f59e0b';
+    context.innerHTML =
+      `<span class="refuel-context-line">Waiting saves ~€${{tankSaving}} on a 50L tank</span>` +
+      brentLine;
+  }}
+}}
+
+function pumpForecastForFuel(country, fuel) {{
+  const series = DATA.countries[country][fuel];
+  const latest = [...series].reverse().find(v => v != null);
+  const brentMove = latestBrentMove();
+  if (latest == null || brentMove == null) return null;
+  const coefficient = forecastCoefficientForFuel(fuel, brentMove);
+  return +(latest / 1000 + coefficient * brentMove / 10).toFixed(4);
+}}
+
+function pumpForecast(country) {{
+  return pumpForecastForFuel(country, currentFuel);
+}}
+
+function pumpHistoryWithForecast(country) {{
+  const points = DATA.countries[country][currentFuel]
+    .map((value, index) => value == null ? null : ({{
+      x: dateX(DATA.dates[index]),
+      y: +(value / 1000).toFixed(4),
+      sourceDate: DATA.dates[index]
+    }}))
+    .filter(Boolean);
+  const forecast = pumpForecast(country);
+  const forecastDisplayX = Math.max(
+    dateX(DATA.dates[DATA.dates.length - 1], 7),
+    DATA.brent_latest?.date
+      ? dateX(DATA.brent_latest.date, 7)
+      : dateX(DATA.dates[DATA.dates.length - 1], 7)
+  );
+  if (forecast != null) points.push({{
+    x: forecastDisplayX,
+    y: forecast,
+    sourceDate: DATA.dates[DATA.dates.length - 1],
+    forecast: true
+  }});
+  return points;
+}}
+
+function sharedPumpAxisBounds(start) {{
+  const values = [];
+  for (const country of CTRS) {{
+    for (const fuel of ['diesel', 'euro95']) {{
+      DATA.countries[country][fuel].slice(start).forEach(value => {{
+        if (value != null) values.push(value / 1000);
+      }});
+      const forecast = pumpForecastForFuel(country, fuel);
+      if (forecast != null) values.push(forecast);
+    }}
+  }}
+  if (!values.length) return null;
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const padding = Math.max(0.03, (high - low) * 0.08);
+  return {{
+    min: Math.floor((low - padding) / 0.05) * 0.05,
+    max: Math.ceil((high + padding) / 0.05) * 0.05
+  }};
+}}
+
+function historyRightEdge(startDate) {{
+  // Convert a fixed visual margin into the equivalent x-axis range. This
+  // keeps the final labels about 150 px from the right axis for every range.
+  const targetPixels = 150;
+  const chartWidth =
+    histChart?.chartArea?.width ||
+    Math.max(500, ($('histChart').clientWidth || 900) - 120);
+  const startX = dateX(startDate);
+  const latestBrentX = DATA.brent_latest?.date
+    ? dateX(DATA.brent_latest.date, 7)
+    : dateX(DATA.dates[DATA.dates.length - 1], 7);
+  const forecastX = dateX(DATA.dates[DATA.dates.length - 1], 7);
+  const finalPointX = Math.max(latestBrentX, forecastX);
+  const plottedWidth = Math.max(250, chartWidth - targetPixels);
+  return finalPointX + (finalPointX - startX) * targetPixels / plottedWidth;
+}}
+
+function refreshHistoryLegendFocus() {{
+  if (!histChart) return;
+  const focus = histChart.$hoverCountry;
+  document.querySelectorAll('.history-legend-country').forEach(button => {{
+    const index = +button.dataset.index;
+    const visible = histChart.isDatasetVisible(index);
+    button.classList.toggle('focused', focus === index);
+    button.classList.toggle('hidden', !visible);
+    button.classList.toggle('dimmed', visible && focus != null && focus !== index);
+    button.setAttribute('aria-pressed', visible ? 'true' : 'false');
+  }});
+}}
+
+function setHistoryHover(index) {{
+  if (!histChart || histChart.$hoverCountry === index) return;
+  histChart.$hoverCountry = index;
+  histChart.draw();
+  refreshHistoryLegendFocus();
+}}
+
+function toggleHistoryCountry(index) {{
+  const visible = histChart.isDatasetVisible(index);
+  histChart.setDatasetVisibility(index, !visible);
+  if (histChart.$hoverCountry === index) histChart.$hoverCountry = null;
+  histChart.update();
+  refreshHistoryLegendFocus();
+}}
+
+function buildHistoryLegend() {{
+  const container = $('history-legend');
+  container.innerHTML = `
+    <div class="history-legend-row">
+      <span class="history-legend-group">Countries</span>
+      ${{CTRS.map((country, index) => `
+        <button class="history-legend-item history-legend-country" data-index="${{index}}" type="button">
+          <span class="history-swatch" style="border-color:${{COLORS[country]}}"></span>${{country}}
+        </button>`).join('')}}
+    </div>
+    <div class="history-legend-row">
+      <span class="history-legend-group">References</span>
+      <span class="history-legend-item">
+        <span class="history-line" style="border-color:#fdffbf"></span>Brent (1-week lead)
+      </span>
+      <span class="history-legend-item">
+        <span class="history-line" style="border-color:#94a3b8"></span>
+        <span class="history-diamond"></span>Indicative pump forecast
+      </span>
+    </div>`;
+
+  container.querySelectorAll('.history-legend-country').forEach(button => {{
+    const index = +button.dataset.index;
+    button.addEventListener('mouseenter', () =>
+      setHistoryHover(histChart.isDatasetVisible(index) ? index : null));
+    button.addEventListener('mouseleave', () => setHistoryHover(null));
+    button.addEventListener('click', () => toggleHistoryCountry(index));
+  }});
+}}
+
 function buildHistChart() {{
   const ctx = $('histChart').getContext('2d');
   const datasets = CTRS.map(c => ({{
     label: c,
-    data: DATA.countries[c][currentFuel].map(v => v != null ? +(v/1000).toFixed(4) : null),
+    hidden: ['DE', 'NL', 'IT'].includes(c),
+    data: pumpHistoryWithForecast(c),
     borderColor: COLORS[c],
     backgroundColor: 'transparent',
     borderWidth: c === 'EU' ? 2.5 : 1.8,
-    pointRadius: 0,
-    tension: 0.3,
+    pointStyle: ctx => ctx.dataIndex === ctx.dataset.data.length - 1 ? 'rectRot' : 'circle',
+    pointRadius: ctx => ctx.dataIndex === ctx.dataset.data.length - 1 ? 5
+      : (ctx.dataIndex === ctx.dataset.data.length - 2 ? 3 : 0),
+    pointHoverRadius: ctx => ctx.dataIndex === ctx.dataset.data.length - 1 ? 7
+      : (ctx.dataIndex === ctx.dataset.data.length - 2 ? 6 : 3),
+    pointBackgroundColor: ctx => ctx.dataIndex === ctx.dataset.data.length - 1 ? '#020817' : COLORS[c],
+    pointBorderColor: COLORS[c],
+    pointBorderWidth: 2,
+    segment: {{
+      borderDash: ctx => ctx.p1DataIndex === ctx.chart.data.datasets[ctx.datasetIndex].data.length - 1
+        ? [7, 4] : undefined,
+      borderWidth: ctx => ctx.p1DataIndex === ctx.chart.data.datasets[ctx.datasetIndex].data.length - 1
+        ? 2.6 : undefined
+    }},
+    tension: 0.15,
     spanGaps: true,
     yAxisID: 'y',
   }}));
 
   // Brent crude — left axis (rose)
   datasets.push({{
-    label: 'Brent',
-    // Plot each Brent reading against the following week's pump-price date.
-    // The leading null shifts the curve right; the final value occupies the
-    // chart's extra weekly label after the latest pump observation.
-    data: [null, ...DATA.brent.map(v => v != null ? +v.toFixed(2) : null)],
+    label: 'Brent daily (1-week lead)',
+    // Daily observations retain their real source date in tooltips but are
+    // positioned seven days to the right to show their pump-price lead.
+    data: displayedBrentSeries(),
     borderColor: '#fdffbf',
     backgroundColor: 'transparent',
     borderWidth: 1.5,
     borderDash: [5, 4],
-    pointRadius: 0,
-    tension: 0.3,
+    pointRadius: ctx => ctx.dataIndex === ctx.dataset.data.length - 1 ? 4 : 0,
+    pointHoverRadius: ctx => ctx.dataIndex === ctx.dataset.data.length - 1 ? 6 : 3,
+    pointBackgroundColor: '#fdffbf',
+    pointBorderColor: '#020817',
+    pointBorderWidth: 2,
+    tension: 0,
     spanGaps: true,
     yAxisID: 'y2',
   }});
 
+  datasets.push({{
+    label: 'Pump forecast (1-week lag)',
+    data: [],
+    borderColor: '#94a3b8',
+    backgroundColor: 'transparent',
+    borderWidth: 1.5,
+    borderDash: [6, 4],
+    pointStyle: 'rectRot',
+    pointBackgroundColor: '#020817',
+    pointBorderColor: '#94a3b8',
+  }});
+
   histChart = new Chart(ctx, {{
     type: 'line',
-    data: {{ labels: DATA.chart_labels, datasets }},
+    data: {{ datasets }},
     options: {{
       responsive: true, maintainAspectRatio: false, devicePixelRatio: window.devicePixelRatio,
+      interaction: {{ mode: 'nearest', axis: 'x', intersect: false }},
+      onHover: (event, elements, chart) => {{
+        const hovered = elements.length && CTRS.includes(chart.data.datasets[elements[0].datasetIndex]?.label)
+          ? elements[0].datasetIndex : null;
+        if (chart.$hoverCountry !== hovered) {{
+          chart.$hoverCountry = hovered;
+          chart.draw();
+          refreshHistoryLegendFocus();
+        }}
+      }},
       plugins: {{
         legend: {{
-          labels: {{ color: '#94a3b8', font: {{ size: 11 }}, boxWidth: 16 }}
+          display: false,
+          labels: {{ color: '#94a3b8', font: {{ size: 11 }}, boxWidth: 16 }},
+          onHover: (event, item, legend) => {{
+            const chart = legend.chart;
+            const hovered = CTRS.includes(chart.data.datasets[item.datasetIndex]?.label)
+              ? item.datasetIndex : null;
+            if (chart.$hoverCountry !== hovered) {{
+              chart.$hoverCountry = hovered;
+              chart.draw();
+            }}
+          }},
+          onLeave: (event, item, legend) => {{
+            if (legend.chart.$hoverCountry != null) {{
+              legend.chart.$hoverCountry = null;
+              legend.chart.draw();
+            }}
+          }},
+          onClick: (event, item, legend) => {{
+            const chart = legend.chart;
+            if (!CTRS.includes(chart.data.datasets[item.datasetIndex]?.label)) {{
+              Chart.defaults.plugins.legend.onClick(event, item, legend);
+              return;
+            }}
+            chart.$lockedCountry = chart.$lockedCountry === item.datasetIndex
+              ? null : item.datasetIndex;
+            chart.draw();
+          }}
         }},
         tooltip: {{
           backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1,
           titleColor: '#94a3b8', bodyColor: '#e2e8f0',
+          xAlign: 'left', yAlign: 'center',
+          titleAlign: 'left', bodyAlign: 'left',
+          titleFont: {{ size: 10, weight: '600' }},
+          bodyFont: {{ size: 10, weight: '400' }},
+          padding: 8, bodySpacing: 3, boxWidth: 8, boxHeight: 8,
           callbacks: {{
-            label: ctx => ctx.dataset.label === 'Brent'
-              ? ` Brent: $${{ctx.raw?.toFixed(2) ?? '—'}}/bbl`
-              : ` ${{ctx.dataset.label}}: €${{ctx.raw?.toFixed(3) ?? '—'}}/L`
+            title: items => {{
+              if (!items.length) return '';
+              const item = items[0];
+              const isLatestBrent =
+                item.dataset.label.startsWith('Brent') &&
+                item.dataIndex === item.dataset.data.length - 1;
+              if (isLatestBrent && DATA.brent_latest?.date)
+                return fmtDateLabel(DATA.brent_latest.date);
+              const isPumpForecast =
+                CTRS.includes(item.dataset.label) &&
+                item.dataIndex === item.dataset.data.length - 1;
+              if (isPumpForecast)
+                return `${{currentFuel === 'diesel' ? 'Diesel' : 'Euro-95'}} price`;
+              return item.raw?.sourceDate
+                ? fmtDateLabel(item.raw.sourceDate)
+                : item.label;
+            }},
+            label: ctx => {{
+              if (ctx.dataset.label.startsWith('Brent'))
+                return ` Brent: $${{ctx.parsed.y?.toFixed(2) ?? '—'}}/bbl`;
+              const fuel = currentFuel === 'diesel' ? 'Diesel' : 'Euro-95';
+              const isForecast = ctx.dataIndex === ctx.dataset.data.length - 1;
+              if (!isForecast)
+                return ` ${{ctx.dataset.label}} ${{fuel}} observed: €${{ctx.parsed.y?.toFixed(2) ?? '—'}}/L`;
+              const move = latestBrentMove();
+              const current = ctx.dataset.data[ctx.dataset.data.length - 2].y;
+              const forecastValue = ctx.parsed.y;
+              const changeCents = (forecastValue - current) * 100;
+              const moveSign = move >= 0 ? '+' : '';
+              const roundedCents = Math.abs(Math.round(changeCents));
+              const tankSaving =
+                (Math.round(Math.abs(changeCents / 100 * 50) * 10) / 10).toFixed(2);
+              const lines = [
+                ` Current: €${{current.toFixed(2)}}/L`,
+                 ` Next week forecast: €${{forecastValue?.toFixed(2) ?? '—'}}/L`
+              ];
+              if (Math.abs(changeCents) < 2)
+                lines.push(' NO RUSH: prices flat next week');
+              else if (changeCents > 0) {{
+                lines.push(` GO NOW: prices rise ~${{roundedCents}} cents/L`);
+                lines.push(` Saves ~€${{tankSaving}} on a 50L tank`);
+              }} else {{
+                lines.push(` WAIT: prices fall ~${{roundedCents}} cents/L`);
+                lines.push(` Waiting saves ~€${{tankSaving}} on a 50L tank`);
+              }}
+              lines.push(` Brent last week: ${{moveSign}}$${{move.toFixed(1)}}/bbl`);
+              return lines;
+            }}
           }}
         }}
       }},
       scales: {{
         x: {{
-          ticks: {{ color: '#e2e8f0', maxTicksLimit: 18, font: {{ size: 13, weight: '600' }} }},
+          type: 'linear',
+          min: dateX(DATA.dates[0]),
+          max: historyRightEdge(DATA.dates[0]),
+          ticks: {{
+            color: '#e2e8f0', maxTicksLimit: 18,
+            font: {{ size: 13, weight: '600' }},
+            callback: value => new Date(value).toLocaleDateString('en-GB', {{
+              day:'numeric', month:'short', year:'2-digit', timeZone:'UTC'
+            }})
+          }},
           grid: {{ color: '#1e293b' }}
         }},
         y: {{
@@ -1132,23 +1680,148 @@ function buildHistChart() {{
           title: {{ display: true, text: 'Brent ($/bbl)', color: '#fdffbf99', font: {{ size: 13, weight: '600' }} }},
         }}
       }}
-    }}
+    }},
+    plugins: [{{
+      id: 'psychologicalPriceLine',
+      beforeDatasetsDraw(chart) {{
+        const scale = chart.scales.y;
+        const y = scale.getPixelForValue(2.00);
+        const {{ctx, chartArea}} = chart;
+        if (y < chartArea.top || y > chartArea.bottom) return;
+
+        ctx.save();
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.8)';
+        ctx.lineWidth = 1.25;
+        ctx.beginPath();
+        ctx.moveTo(chartArea.left, y);
+        ctx.lineTo(chartArea.right, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.font = '600 10px Inter, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'bottom';
+        const label = '€2.00/L level';
+        const width = ctx.measureText(label).width;
+        ctx.fillStyle = 'rgba(2, 8, 23, 0.82)';
+        ctx.fillRect(chartArea.left + 7, y - 17, width + 10, 15);
+        ctx.fillStyle = '#ef4444';
+        ctx.fillText(label, chartArea.left + 12, y - 4);
+        ctx.restore();
+      }}
+    }}, {{
+      id: 'forecastZone',
+      beforeDatasetsDraw(chart) {{
+        const firstPump = chart.data.datasets.findIndex(ds => CTRS.includes(ds.label));
+        if (firstPump < 0) return;
+        const dataset = chart.data.datasets[firstPump];
+        const points = chart.getDatasetMeta(firstPump).data;
+        const actual = points[dataset.data.length - 2];
+        const forecast = points[dataset.data.length - 1];
+        if (!actual || !forecast) return;
+
+        const boundary = actual.x;
+        const {{ctx, chartArea}} = chart;
+        ctx.save();
+        ctx.fillStyle = 'rgba(148, 163, 184, 0.055)';
+        ctx.fillRect(boundary, chartArea.top, chartArea.right - boundary, chartArea.bottom - chartArea.top);
+        ctx.setLineDash([4, 4]);
+        ctx.strokeStyle = 'rgba(148, 163, 184, 0.65)';
+        ctx.beginPath();
+        ctx.moveTo(boundary, chartArea.top);
+        ctx.lineTo(boundary, chartArea.bottom);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '700 10px Inter, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText('MODEL FORECAST', boundary + 8, chartArea.top + 8);
+        ctx.restore();
+      }}
+    }}, {{
+      id: 'countryFocus',
+      beforeDatasetDraw(chart, args) {{
+        chart.ctx.save();
+        const focus = chart.$hoverCountry;
+        const label = chart.data.datasets[args.index]?.label;
+        if (focus != null && CTRS.includes(label) && args.index !== focus)
+          chart.ctx.globalAlpha = 0.18;
+      }},
+      afterDatasetDraw(chart) {{
+        chart.ctx.restore();
+      }}
+    }}, {{
+      id: 'latestBrentLabel',
+      afterDatasetsDraw(chart) {{
+        const datasetIndex = chart.data.datasets.findIndex(ds => ds.label.startsWith('Brent'));
+        if (datasetIndex < 0) return;
+        const dataset = chart.data.datasets[datasetIndex];
+        const lastIndex = dataset.data.length - 1;
+        const value = dataset.data[lastIndex]?.y;
+        const point = chart.getDatasetMeta(datasetIndex).data[lastIndex];
+        if (value == null || !point) return;
+
+        const observationDate = new Date(
+          (DATA.brent_latest?.date ?? DATA.dates[DATA.dates.length - 1]) + 'T12:00:00Z'
+        );
+        const shiftedDate = observationDate.toLocaleDateString('en-GB', {{
+          day: 'numeric', month: 'short', year: '2-digit', timeZone: 'UTC'
+        }});
+        const move = latestBrentMove();
+        const moveLabel = move == null ? '' : ` (${{move >= 0 ? '+' : '-'}}$${{Math.abs(move).toFixed(1)}})`;
+        const titleLabel = 'Brent';
+        const valueLabel = `$${{value.toFixed(0)}}/bbl${{moveLabel}}`;
+        const ctx = chart.ctx;
+        ctx.save();
+        ctx.font = '600 11px Inter, sans-serif';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        const width = Math.max(
+          ctx.measureText(titleLabel).width,
+          ctx.measureText(valueLabel).width,
+          ctx.measureText(shiftedDate).width
+        );
+        const x = point.x + 9;
+        const y = point.y - 25;
+        ctx.fillStyle = 'rgba(2, 8, 23, 0.82)';
+        ctx.fillRect(x - 5, y - 4, width + 10, 46);
+        ctx.fillStyle = '#cbd5e1';
+        ctx.fillText(titleLabel, x, y);
+        ctx.fillStyle = '#fdffbf';
+        ctx.fillText(valueLabel, x, y + 14);
+        ctx.fillStyle = '#cbd5e1';
+        ctx.fillText(shiftedDate, x, y + 28);
+        ctx.restore();
+      }}
+    }}]
   }});
+  buildHistoryLegend();
 }}
 
 function updateHistChart() {{
   const total = DATA.dates.length;
   const start = currentRange === 0 ? 0 : Math.max(0, total - currentRange);
-  const lblSrc = (currentRange === DATA.ytd_weeks) ? DATA.chart_labels_full : DATA.chart_labels;
-  histChart.data.labels = lblSrc.slice(start);
+  const startDate = DATA.dates[start];
   histChart.data.datasets.forEach((ds, i) => {{
-    if (ds.label === 'Brent') {{
-      ds.data = [null, ...DATA.brent].slice(start).map(v => v != null ? +v.toFixed(2) : null);
+    if (ds.label.startsWith('Brent')) {{
+      ds.data = displayedBrentSeries(startDate);
+    }} else if (ds.label.startsWith('Pump forecast')) {{
+      ds.data = [];
     }} else {{
       const c = CTRS[i];
-      ds.data = DATA.countries[c][currentFuel].slice(start).map(v => v != null ? +(v/1000).toFixed(4) : null);
+      ds.data = pumpHistoryWithForecast(c).filter(
+        point => point.sourceDate >= startDate
+      );
     }}
   }});
+  histChart.options.scales.x.min = dateX(startDate);
+  histChart.options.scales.x.max = historyRightEdge(startDate);
+  const pumpBounds = sharedPumpAxisBounds(start);
+  if (pumpBounds) {{
+    histChart.options.scales.y.min = pumpBounds.min;
+    histChart.options.scales.y.max = pumpBounds.max;
+  }}
   histChart.update();
 }}
 
@@ -1156,6 +1829,7 @@ function switchFuel(fuel) {{
   currentFuel = fuel;
   $('btn95').classList.toggle('active', fuel === 'euro95');
   $('btnD' ).classList.toggle('active', fuel === 'diesel');
+  updateRefuelCallout();
   updateHistChart();
 }}
 
@@ -1196,18 +1870,37 @@ function buildPriceChart() {{
     }},
     options: {{
       responsive: true, maintainAspectRatio: false, devicePixelRatio: window.devicePixelRatio,
+      layout: {{ padding: {{ top: 34 }} }},
       plugins: {{
         legend: {{ display: false }},
         tooltip: {{
           backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1,
           titleColor: '#94a3b8', bodyColor: '#e2e8f0',
-          callbacks: {{ label: ctx => ` ${{ctx.dataset.label}}: €${{ctx.raw?.toFixed(4)}}/L` }}
+          callbacks: {{
+            title: items => items.length ? `${{items[0].label}} · ${{items[0].dataset.label}}` : '',
+            label: ctx => {{
+              const fuelKey = ctx.datasetIndex === 0 ? 'diesel' : 'euro95';
+              const move = latestBrentMove();
+              const coefficient = forecastCoefficientForFuel(fuelKey, move);
+              const forecast = ctx.raw + coefficient * move / 10;
+              const changeCents = (forecast - ctx.raw) * 100;
+              const roundedCents = Math.round(changeCents);
+              const sign = roundedCents >= 0 ? '+' : '';
+              return [
+                ' Current',
+                ` €${{ctx.raw.toFixed(2)}}/L`,
+                ' Next Week Forecast',
+                ` €${{forecast.toFixed(2)}}/L (${{sign}}${{roundedCents}} cents)`
+              ];
+            }}
+          }}
         }},
       }},
       scales: {{
         x: {{ ticks: {{ color: '#e2e8f0', font: {{ size: 12, weight: 700 }} }}, grid: {{ color: '#1e293b' }} }},
         y: {{
           min: 1.30,
+          grace: '10%',
           ticks: {{ color: '#e2e8f0', callback: v => `€${{v.toFixed(2)}}`, font: {{ size: 13, weight: '600' }} }},
           grid: {{ color: '#1e293b' }},
           title: {{ display: true, text: '€/L', color: '#e2e8f0', font: {{ size: 13, weight: '600' }} }},
@@ -1219,6 +1912,8 @@ function buildPriceChart() {{
       afterDatasetsDraw(chart) {{
         const ctx2 = chart.ctx;
         const fuelLabels = ['Diesel', '95'];
+        const brentMove = latestBrentMove();
+        const direction = brentMove == null ? null : (brentMove >= 0 ? '▲' : '▼');
         chart.data.datasets.forEach((ds, i) => {{
           chart.getDatasetMeta(i).data.forEach((bar, j) => {{
             const val = ds.data[j];
@@ -1229,11 +1924,36 @@ function buildPriceChart() {{
             ctx2.font = '10px DM Sans, sans-serif';
             ctx2.fillStyle = '#cbd5e1';
             ctx2.textBaseline = 'bottom';
-            ctx2.fillText(fuelLabels[i], bar.x, bar.y - 15);
+            ctx2.fillText(fuelLabels[i], bar.x, chart.chartArea.top - 18);
             // value
             ctx2.font = 'bold 11px DM Sans, sans-serif';
             ctx2.fillStyle = '#f8fafc';
-            ctx2.fillText(`€${{val.toFixed(2)}}`, bar.x, bar.y - 3);
+            const valueText = `€${{val.toFixed(2)}}`;
+            ctx2.fillText(valueText, bar.x, chart.chartArea.top - 4);
+
+            // Prediction direction: a large two-part arrow above the bar.
+            if (direction) {{
+              const color = Array.isArray(ds.backgroundColor)
+                ? ds.backgroundColor[j] : ds.backgroundColor;
+              const x = bar.x;
+              ctx2.fillStyle = color;
+              ctx2.beginPath();
+              if (brentMove >= 0) {{
+                ctx2.moveTo(x, bar.y - 22);
+                ctx2.lineTo(x - 8, bar.y - 11);
+                ctx2.lineTo(x + 8, bar.y - 11);
+                ctx2.closePath();
+                ctx2.fill();
+                ctx2.fillRect(x - 7, bar.y - 7, 14, 4);
+              }} else {{
+                ctx2.fillRect(x - 7, bar.y - 22, 14, 4);
+                ctx2.moveTo(x - 8, bar.y - 14);
+                ctx2.lineTo(x + 8, bar.y - 14);
+                ctx2.lineTo(x, bar.y - 3);
+                ctx2.closePath();
+                ctx2.fill();
+              }}
+            }}
             ctx2.restore();
           }});
         }});
@@ -1246,6 +1966,7 @@ function buildPriceChart() {{
 function buildYTD() {{
   const yr = DATA.dates[DATA.dates.length-1].slice(0,4);
   $('ytd-year').textContent = yr;
+  $('ytd-tab-label').textContent = `${{yr}} Variation`;
 
   // Cards
   const wrap = $('ytd-cards');
@@ -1737,7 +2458,7 @@ function buildConsumption() {{
     data: {{
       labels: ctrs,
       datasets: FUEL_TYPES.map(f => ({{
-        label: f,
+        label: FUEL_DISPLAY[f],
         data: ctrs.map(c => DATA.consumption[c][f] || 0),
         backgroundColor: FUEL_COLORS[f],
         stack: 'a',
@@ -1765,7 +2486,7 @@ function buildConsumption() {{
     data: {{
       labels: ctrs,
       datasets: FUEL_TYPES.map(f => ({{
-        label: f,
+        label: FUEL_DISPLAY[f],
         data: pctData.map(r => r[f]),
         backgroundColor: FUEL_COLORS[f],
         stack: 'a',
@@ -1778,7 +2499,7 @@ function buildConsumption() {{
   const thead = $('cons-head');
   ['Country', ...FUEL_TYPES, 'Total'].forEach(h => {{
     const th = document.createElement('th');
-    th.textContent = h;
+    th.textContent = FUEL_DISPLAY[h] || h;
     th.style.color = FUEL_COLORS[h] || '#94a3b8';
     if (h === 'Country') th.style.textAlign = 'left';
     thead.appendChild(th);
@@ -1961,6 +2682,7 @@ function buildSensitivity() {{
 # ---------------------------------------------------------------------------
 WEBPAGE_NAME  = "oil_dashboard"
 GHPAGES_REPO  = Path(__file__).resolve().parent.parent / "sebast759.github.io"
+GHPAGES_REMOTE = "https://github.com/sebast759/sebast759.github.io.git"
 DEFAULT_OUT   = str(GHPAGES_REPO / WEBPAGE_NAME / "index.html")
 
 
@@ -2019,24 +2741,42 @@ def push_to_github_pages(html: str, token: str):
 
 
 def git_push(ghpages_repo: Path, webpage_name: str):
-    """Pull, stage, commit and push if there are changes."""
+    """Publish through a clean temporary checkout, preserving local Pages edits."""
     import subprocess
     print("\nPushing to GitHub Pages ...")
-    subprocess.run(["git", "add", f"{webpage_name}/index.html"],
-                   cwd=ghpages_repo, check=True)
-    result = subprocess.run(["git", "diff", "--cached", "--quiet"],
-                             cwd=ghpages_repo)
-    if result.returncode != 0:
-        subprocess.run(["git", "commit", "-m", f"Update {webpage_name} dashboard"],
-                       cwd=ghpages_repo, check=True)
-    else:
-        print("  No changes to push.")
+    source_file = ghpages_repo / webpage_name / "index.html"
+    generated_html = source_file.read_bytes()
 
-    # Preserve unrelated local edits in the Pages repo while synchronising.
-    # This also resumes publishing cleanly after a previous pull/push failure.
-    subprocess.run(["git", "pull", "--rebase", "--autostash", "-X", "theirs"],
-                   cwd=ghpages_repo, check=True)
-    subprocess.run(["git", "push"], cwd=ghpages_repo, check=True)
+    with tempfile.TemporaryDirectory(prefix="oil-dashboard-pages-") as tmp:
+        clean_repo = Path(tmp) / "website"
+        subprocess.run(
+            ["git", "clone", "--quiet", "--single-branch",
+             GHPAGES_REMOTE, str(clean_repo)],
+            check=True,
+        )
+
+        target_file = clean_repo / webpage_name / "index.html"
+        target_file.parent.mkdir(parents=True, exist_ok=True)
+        target_file.write_bytes(generated_html)
+
+        subprocess.run(["git", "config", "user.name", "Dashboard Bot"],
+                       cwd=clean_repo, check=True)
+        subprocess.run(["git", "config", "user.email", "actions@github.com"],
+                       cwd=clean_repo, check=True)
+        subprocess.run(["git", "add", f"{webpage_name}/index.html"],
+                       cwd=clean_repo, check=True)
+        result = subprocess.run(["git", "diff", "--cached", "--quiet"],
+                                cwd=clean_repo)
+        if result.returncode == 0:
+            print("  Dashboard is already up to date.")
+            return
+
+        subprocess.run(
+            ["git", "commit", "-m", f"Update {webpage_name} dashboard"],
+            cwd=clean_repo, check=True,
+        )
+        subprocess.run(["git", "push"], cwd=clean_repo, check=True)
+
     print(f"  Live at https://sebast759.github.io/{webpage_name}/")
 
 

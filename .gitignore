@@ -1,6 +1,7 @@
 # Cached data — regenerated on each run, never commit
 brent_cache.csv
 *.xlsx
+.cache/
 
 # Python
 __pycache__/
