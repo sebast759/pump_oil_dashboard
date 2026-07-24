@@ -584,7 +584,7 @@ def build_html(data: dict) -> str:
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛢️</text></svg>">
 <script src="{CHART_JS_CDN}"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
 body {{
@@ -736,31 +736,45 @@ button.history-legend-item {{ cursor: pointer; transition: opacity .15s, color .
 }}
 .refuel-callout {{
   position: relative; width: 100%; text-align: center; margin: 0 0 24px;
-  padding: 22px 28px 20px; border-radius: 12px;
+  padding: 25px 28px 23px; border-radius: 12px;
   background: linear-gradient(135deg, rgba(15,32,64,.72), rgba(6,14,30,.92));
   border: 1px solid #29415f;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+  font-family: 'Inter', 'DM Sans', sans-serif;
 }}
 .refuel-illustration {{
-  position: absolute; left: 22px; top: 50%; transform: translateY(-50%);
-  width: 132px; height: 92px; object-fit: contain; opacity: .9;
+  position:absolute; left:18px; top:50%; transform:translateY(-50%);
+  width:280px; height:180px; object-fit:contain; opacity:.92;
 }}
-.refuel-copy {{ padding: 2px 130px; }}
+.refuel-copy {{ padding:2px 150px 2px 150px; }}
 .refuel-question {{
-  color: #f8fafc; font-size: 20px; font-weight: 800;
-  letter-spacing: -.01em; margin-bottom: 7px;
+  color:#f8fafc; font-size:19px; font-weight:600;
+  letter-spacing:-.015em; margin-bottom:9px;
 }}
 .refuel-answer {{
-  font-weight: 900; line-height: 1.08; letter-spacing: -.025em;
+  font-weight:800; line-height:1.12; letter-spacing:-.025em;
   transition: font-size .2s ease, color .2s ease;
 }}
 .refuel-action, .refuel-detail {{ display: block; }}
-.refuel-detail {{ font-size: .56em; font-weight: 700; margin-top: 5px; letter-spacing: 0; }}
-.refuel-context {{ color: #f1f5f9; font-size: 13px; font-weight: 700; margin-top: 9px; }}
+.refuel-detail {{
+  color:#dbe5f3; font-size:17px; font-weight:500;
+  line-height:1.4; margin-top:7px; letter-spacing:-.01em;
+}}
+.refuel-context {{
+  color:#dbe5f3; font-size:13px; font-weight:450;
+  line-height:1.5; margin-top:11px;
+}}
 .refuel-context-line {{ display: block; }}
-.refuel-context-line + .refuel-context-line {{ margin-top: 3px; }}
+.saving-line {{
+  width:max-content; max-width:100%; margin:0 auto;
+  padding:5px 11px; border-radius:999px;
+  color:#ecfdf5; background:rgba(16,185,129,.12);
+  border:1px solid rgba(16,185,129,.25); font-weight:600;
+}}
+.market-line {{ margin-top:13px; color:#cbd5e1; font-weight:350; }}
+.market-line strong {{ color:#f8fafc; font-weight:500; }}
 @media (max-width: 700px) {{
-  .refuel-illustration {{ width: 96px; left: 8px; opacity: .28; }}
+  .refuel-illustration {{ width:160px; height:110px; left:4px; opacity:.25; }}
   .refuel-copy {{ padding: 2px 12px; position: relative; }}
 }}
 canvas {{ max-width: 100%; }}
@@ -821,9 +835,12 @@ canvas {{ max-width: 100%; }}
       <div class="header-title">
         <div class="logo">🛢️</div>
         <div>
-          <h1>EU Weekly Oil Bulletin</h1>
-          <div class="subtitle">European Commission · Consumer Petroleum Prices inc. taxes · Latest: <span id="latest-date"></span></div>
-          <div class="subtitle"><a href="https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en" target="_blank" rel="noopener" style="color:#f59e0b;text-decoration:none;font-weight:600;" onmouseover="this.style.color='#fde68a'" onmouseout="this.style.color='#f59e0b'">Data source ↗</a></div>
+          <h1>Should you fill up now or wait?</h1>
+          <div class="subtitle"><em>Weekly pump prices in Europe with a next-week signal.</em></div>
+          <button type="button" onclick="showTab(5)"
+                  style="margin-top:5px;padding:0;border:0;background:none;color:#f59e0b;font:600 11px 'Inter','DM Sans',sans-serif;cursor:pointer;">
+            About &amp; data sources →
+          </button>
         </div>
       </div>
     </div>
@@ -1166,7 +1183,6 @@ function fmtVal(v, decimals=1) {{
 // ---- INIT ----------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {{
   const latest = DATA.dates[DATA.dates.length - 1];
-  $('latest-date').textContent = latest;
   $('table-date').textContent  = latest;
   $('history-status').textContent =
     `Observed through ${{fmtDateLabel(latest)}} · Indicative forecast ${{DATA.chart_labels_full[DATA.dates.length]}}`;
@@ -1324,32 +1340,36 @@ function updateRefuelCallout() {{
   answer.style.fontSize = `${{(22 + strength * 10).toFixed(1)}}px`;
   const weeklyBrent = [...DATA.brent].reverse().find(value => value != null);
   const currentBrent = DATA.brent_latest?.price ?? weeklyBrent;
-  const brentObservationDate = DATA.brent_latest?.date
-    ? fmtDateLabel(DATA.brent_latest.date)
-    : fmtDateLabel(DATA.dates[DATA.dates.length - 1]);
-  const brentContext =
-    `Brent +$${{currentBrent.toFixed(0)}}/bbl, ` +
-    `${{move >= 0 ? '+' : '-'}}$${{Math.abs(move).toFixed(1)}}/bbl vs. prev. week ` +
-    `(${{brentObservationDate}})`;
-  const brentLine = `<span class="refuel-context-line">${{brentContext}}</span>`;
+  const brentDirection = move >= 0 ? 'up' : 'down';
+  const expectedEuroLabel =
+    `${{expectedCents >= 0 ? '+' : '-'}}€${{Math.abs(expectedCents / 100).toFixed(2)}}/L`;
+  const brentLine =
+    `<span class="refuel-context-line market-line">` +
+    `Brent is ${{brentDirection}} <strong>$${{Math.abs(move).toFixed(1)}} this week</strong> ` +
+    `at <strong>$${{currentBrent.toFixed(0)}}/bbl</strong>. Pump prices will follow next week ` +
+    `(<strong>${{expectedEuroLabel}} expected</strong>).</span>`;
 
   if (Math.abs(expectedCents) < 2) {{
-    answer.innerHTML = '<span class="refuel-action">NO RUSH: prices flat next week</span>';
+    answer.innerHTML =
+      '<span class="refuel-action">NO RUSH</span>' +
+      '<span class="refuel-detail">Pump prices should stay broadly flat next week</span>';
     answer.style.color = '#94a3b8';
     context.innerHTML = brentLine;
   }} else if (expectedCents > 0) {{
     answer.innerHTML =
-      `<span class="refuel-action">GO NOW: prices rise ~ +${{cents}} cents/L next week</span>`;
+      `<span class="refuel-action">GO NOW</span>` +
+      `<span class="refuel-detail">Pump prices could rise ~+${{cents}} cents/L next week</span>`;
     answer.style.color = '#10b981';
     context.innerHTML =
-      `<span class="refuel-context-line">Saves ~€${{tankSaving}} on a 50L tank</span>` +
+      `<span class="refuel-context-line saving-line">That’s €${{tankSaving}} saved on a 50L tank</span>` +
       brentLine;
   }} else {{
     answer.innerHTML =
-      `<span class="refuel-action">WAIT: prices fall ~${{cents}} cents/L next week</span>`;
+      `<span class="refuel-action">WAIT</span>` +
+      `<span class="refuel-detail">Pump prices could fall ~${{cents}} cents/L next week</span>`;
     answer.style.color = '#f59e0b';
     context.innerHTML =
-      `<span class="refuel-context-line">Waiting saves ~€${{tankSaving}} on a 50L tank</span>` +
+      `<span class="refuel-context-line saving-line">Waiting could save about €${{tankSaving}} on a 50L tank</span>` +
       brentLine;
   }}
 }}
@@ -1552,7 +1572,7 @@ function buildHistChart() {{
     data: {{ datasets }},
     options: {{
       responsive: true, maintainAspectRatio: false, devicePixelRatio: window.devicePixelRatio,
-      interaction: {{ mode: 'nearest', axis: 'x', intersect: false }},
+      interaction: {{ mode: 'nearest', axis: 'xy', intersect: false }},
       onHover: (event, elements, chart) => {{
         const hovered = elements.length && CTRS.includes(chart.data.datasets[elements[0].datasetIndex]?.label)
           ? elements[0].datasetIndex : null;
@@ -1625,29 +1645,17 @@ function buildHistChart() {{
               const isForecast = ctx.dataIndex === ctx.dataset.data.length - 1;
               if (!isForecast)
                 return ` ${{ctx.dataset.label}} ${{fuel}} observed: €${{ctx.parsed.y?.toFixed(2) ?? '—'}}/L`;
-              const move = latestBrentMove();
               const current = ctx.dataset.data[ctx.dataset.data.length - 2].y;
               const forecastValue = ctx.parsed.y;
-              const changeCents = (forecastValue - current) * 100;
-              const moveSign = move >= 0 ? '+' : '';
-              const roundedCents = Math.abs(Math.round(changeCents));
-              const tankSaving =
-                (Math.round(Math.abs(changeCents / 100 * 50) * 10) / 10).toFixed(2);
-              const lines = [
-                ` Current: €${{current.toFixed(2)}}/L`,
-                 ` Next week forecast: €${{forecastValue?.toFixed(2) ?? '—'}}/L`
+              const changeEuro = forecastValue - current;
+              const changeLabel =
+                `${{changeEuro >= 0 ? '+' : '-'}}${{Math.abs(changeEuro).toFixed(2)}}€`;
+              return [
+                ' Current',
+                ` €${{current.toFixed(2)}}/L`,
+                ' Forecast:',
+                ` €${{forecastValue?.toFixed(2) ?? '—'}}/L (${{changeLabel}})`
               ];
-              if (Math.abs(changeCents) < 2)
-                lines.push(' NO RUSH: prices flat next week');
-              else if (changeCents > 0) {{
-                lines.push(` GO NOW: prices rise ~${{roundedCents}} cents/L`);
-                lines.push(` Saves ~€${{tankSaving}} on a 50L tank`);
-              }} else {{
-                lines.push(` WAIT: prices fall ~${{roundedCents}} cents/L`);
-                lines.push(` Waiting saves ~€${{tankSaving}} on a 50L tank`);
-              }}
-              lines.push(` Brent last week: ${{moveSign}}$${{move.toFixed(1)}}/bbl`);
-              return lines;
             }}
           }}
         }}
