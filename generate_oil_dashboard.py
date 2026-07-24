@@ -587,17 +587,25 @@ def build_html(data: dict) -> str:
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
 * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+:root {{
+  --bg-page: #131a2a;
+  --bg-card: #1a2336;
+  --bg-inset: #212b42;
+  --border: rgba(148,163,184,.12);
+  --text-primary: #e2e8f0;
+  --text-secondary: #94a3b8;
+}}
 body {{
-  background: #020818;
-  color: #e2e8f0;
+  background: var(--bg-page);
+  color: var(--text-primary);
   font-family: 'DM Sans', sans-serif;
   min-height: 100vh;
 }}
 .mono {{ font-family: 'DM Mono', monospace; }}
 /* HEADER */
 .header {{
-  background: linear-gradient(135deg,#0c1428 0%,#0f2040 100%);
-  border-bottom: 1px solid #1e3a5f;
+  background: linear-gradient(135deg,#182236 0%,#1d2a42 100%);
+  border-bottom: 1px solid var(--border);
   padding: 20px 32px 0;
 }}
 .header-top {{
@@ -611,15 +619,15 @@ body {{
   border-radius: 8px; display: flex; align-items: center;
   justify-content: center; font-size: 18px;
 }}
-h1 {{ font-size: 22px; font-weight: 800; letter-spacing: -0.5px; color: #f1f5f9; }}
+h1 {{ font-size: 22px; font-weight: 800; letter-spacing: -0.5px; color: #e2e8f0; }}
 .subtitle {{ font-size: 12px; color: #94a3b8; margin-top: 3px; }}
 .price-badges {{ display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }}
 .badge {{
-  background: #0c1a30; border-radius: 8px;
+  background: var(--bg-inset); border-radius: 8px;
   padding: 6px 12px; text-align: center; min-width: 68px;
 }}
 .badge-label {{ font-size: 10px; font-weight: 700; margin-bottom: 2px; }}
-.badge-price {{ font-size: 13px; font-weight: 800; color: #f1f5f9; }}
+.badge-price {{ font-size: 13px; font-weight: 800; color: #e2e8f0; }}
 .badge-unit {{ font-size: 9px; color: #94a3b8; margin-top: 1px; }}
 /* TABS */
 .tabs {{ display: flex; }}
@@ -636,40 +644,40 @@ h1 {{ font-size: 22px; font-weight: 800; letter-spacing: -0.5px; color: #f1f5f9;
 .panel.active {{ display: block; }}
 /* CARDS / BOXES */
 .card {{
-  background: #060e1e; border-radius: 12px;
-  border: 1px solid #1e293b; overflow: hidden;
+  background: var(--bg-card); border-radius: 12px;
+  border: 1px solid var(--border); overflow: hidden;
 }}
 .card-header {{
-  padding: 14px 20px; border-bottom: 1px solid #1e293b;
+  padding: 14px 20px; border-bottom: 1px solid var(--border);
   display: flex; justify-content: space-between; align-items: center;
 }}
-.card-title {{ font-size: 13px; font-weight: 700; color: #f1f5f9; }}
+.card-title {{ font-size: 13px; font-weight: 700; color: #e2e8f0; }}
 .card-sub {{ font-size: 11px; color: #94a3b8; }}
 /* GRID */
 .grid-2 {{ display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }}
 .grid-7 {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 10px; margin-bottom: 20px; }}
 /* YTD cards */
 .ytd-card {{
-  background: #060e1e; border-radius: 10px;
-  border: 1px solid #1e3a5f; padding: 12px;
+  background: var(--bg-card); border-radius: 10px;
+  border: 1px solid var(--border); padding: 12px;
 }}
 .ytd-ctr {{ font-size: 11px; font-weight: 700; margin-bottom: 8px; }}
 .ytd-val {{ font-size: 13px; font-weight: 800; line-height: 1.3; }}
 .ytd-sub {{ font-size: 9px; color: #94a3b8; margin-bottom: 2px; }}
 .ytd-val2 {{ font-size: 12px; font-weight: 700; margin-top: 4px; line-height: 1.3; }}
-.up {{ color: #ef4444; }}
-.dn {{ color: #10b981; }}
+.up {{ color: #f87171; }}
+.dn {{ color: #34d399; }}
 /* TABLE */
 table {{ width: 100%; border-collapse: collapse; font-size: 12px; }}
 th {{
   padding: 8px 16px; text-align: right; color: #94a3b8;
-  font-weight: 600; border-bottom: 1px solid #1e293b;
-  background: #0c1428;
+  font-weight: 600; border-bottom: 1px solid var(--border);
+  background: var(--bg-inset);
 }}
 th:first-child {{ text-align: left; }}
 td {{ padding: 8px 16px; text-align: right; }}
 td:first-child {{ text-align: left; }}
-tr:nth-child(even) {{ background: #080f1a; }}
+tr:nth-child(even) {{ background: rgba(33,43,66,.48); }}
 .dot {{
   display: inline-block; width: 8px; height: 8px;
   border-radius: 50%; margin-right: 8px;
@@ -683,8 +691,8 @@ tr:nth-child(even) {{ background: #080f1a; }}
 .toggle-row {{ display: flex; gap: 8px; }}
 .toggle-btn {{
   padding: 6px 14px; border-radius: 20px; font-size: 12px;
-  font-weight: 600; border: 1px solid #1e3a5f;
-  background: #0c1428; color: #94a3b8;
+  font-weight: 600; border: 1px solid var(--border);
+  background: var(--bg-inset); color: #94a3b8;
   cursor: pointer; font-family: 'DM Sans', sans-serif;
   transition: all 0.2s;
 }}
@@ -697,7 +705,7 @@ tr:nth-child(even) {{ background: #080f1a; }}
 }}
 .tax-bar-label {{ width: 32px; font-size: 12px; font-weight: 700; }}
 .tax-bar-track {{
-  flex: 1; background: #0c1428; border-radius: 4px; height: 26px; overflow: hidden;
+  flex: 1; background: var(--bg-inset); border-radius: 4px; height: 26px; overflow: hidden;
 }}
 .tax-bar-fill {{
   height: 100%; border-radius: 4px;
@@ -726,7 +734,7 @@ tr:nth-child(even) {{ background: #080f1a; }}
 }}
 button.history-legend-item {{ cursor: pointer; transition: opacity .15s, color .15s; }}
 .history-legend-item.dimmed {{ opacity: .25; }}
-.history-legend-item.focused {{ color: #f1f5f9; font-weight: 700; }}
+.history-legend-item.focused {{ color: #e2e8f0; font-weight: 700; }}
 .history-legend-item.hidden {{ opacity: .3; text-decoration: line-through; }}
 .history-swatch {{ display: inline-block; width: 15px; height: 8px; border: 2px solid; }}
 .history-line {{ display: inline-block; width: 18px; border-top: 2px dashed; }}
@@ -737,8 +745,8 @@ button.history-legend-item {{ cursor: pointer; transition: opacity .15s, color .
 .refuel-callout {{
   position: relative; width: 100%; text-align: center; margin: 0 0 24px;
   padding: 25px 28px 23px; border-radius: 12px;
-  background: linear-gradient(135deg, rgba(15,32,64,.72), rgba(6,14,30,.92));
-  border: 1px solid #29415f;
+  background: linear-gradient(135deg, rgba(33,43,66,.96), rgba(26,35,54,.98));
+  border: 1px solid var(--border);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
   font-family: 'Inter', 'DM Sans', sans-serif;
 }}
@@ -781,18 +789,18 @@ canvas {{ max-width: 100%; }}
 /* Info box */
 .info-box {{
   margin-top: 12px; padding: 12px 16px;
-  background: #0c1428; border-radius: 8px;
+  background: var(--bg-inset); border-radius: 8px;
   font-size: 11px; color: #94a3b8;
 }}
 .section-title {{
-  font-size: 16px; font-weight: 700; color: #f1f5f9; margin-bottom: 4px;
+  font-size: 16px; font-weight: 700; color: #e2e8f0; margin-bottom: 4px;
 }}
 .section-sub {{ font-size: 12px; color: #94a3b8; margin-bottom: 20px; }}
 /* About & sources */
 .about-hero {{
   padding: 28px; margin-bottom: 20px;
-  background: linear-gradient(135deg, rgba(15,32,64,.9), rgba(6,14,30,.96));
-  border: 1px solid #29415f; border-radius: 12px;
+  background: linear-gradient(135deg, rgba(33,43,66,.96), rgba(26,35,54,.98));
+  border: 1px solid var(--border); border-radius: 12px;
 }}
 .about-hero h2 {{ color:#f8fafc; font-size:24px; margin-bottom:10px; }}
 .about-hero p {{ color:#cbd5e1; font-size:14px; line-height:1.7; max-width:820px; }}
@@ -801,7 +809,7 @@ canvas {{ max-width: 100%; }}
 }}
 .source-card {{
   display:block; padding:18px; min-height:150px; color:inherit;
-  background:#060e1e; border:1px solid #1e3a5f; border-radius:10px;
+  background:var(--bg-card); border:1px solid var(--border); border-radius:10px;
   text-decoration:none; transition:border-color .18s ease, transform .18s ease;
 }}
 .source-card:hover {{ border-color:#f59e0b; transform:translateY(-2px); }}
@@ -813,7 +821,7 @@ canvas {{ max-width: 100%; }}
 .source-copy {{ color:#94a3b8; font-size:12px; line-height:1.55; }}
 .source-link {{ color:#f59e0b; font-size:11px; font-weight:700; margin-top:12px; }}
 .about-copy {{ padding:20px; }}
-.about-copy h3 {{ color:#f1f5f9; font-size:15px; margin-bottom:8px; }}
+.about-copy h3 {{ color:#e2e8f0; font-size:15px; margin-bottom:8px; }}
 .about-copy p, .about-copy li {{ color:#94a3b8; font-size:12px; line-height:1.7; }}
 .about-copy ul {{ padding-left:18px; }}
 /* Responsive */
@@ -1165,6 +1173,9 @@ const DATA = {data_js};
 const COLORS = {colors_js};
 const FUEL_COLORS = {fuel_colors_js};
 const CTRS = {countries_js};
+const CHART_GRID = 'rgba(148,163,184,0.08)';
+const TOOLTIP_BG = '#212b42';
+const BRENT_COLOR = '#d4c98a';
 const FUEL_TYPES = ["Gasoline","Diesel","Heating Oil","Fuel Oil","LPG"];
 const FUEL_DISPLAY = {{"Gasoline":"SP95","Diesel":"Diesel","Heating Oil":"Heating Oil","Fuel Oil":"Fuel Oil","LPG":"LPG"}};
 
@@ -1268,7 +1279,7 @@ function buildBadges() {{
     if (DATA.brent[i] != null) {{ prev = DATA.brent[i]; break; }}
   }}
   if (cur != null && prev != null) {{
-    const col = (cur - prev) >= 0 ? '#ef4444' : '#10b981';
+    const col = (cur - prev) >= 0 ? '#f87171' : '#34d399';
     $('brent-info').innerHTML =
       `Brent: ` + brentInfoLine(cur, curDate, cur - prev, prev, col)
       + ` <span style="color:#94a3b8">vs prev. week</span>`;
@@ -1359,7 +1370,7 @@ function updateRefuelCallout() {{
     answer.innerHTML =
       `<span class="refuel-action">GO NOW</span>` +
       `<span class="refuel-detail">Pump prices could rise ~+${{cents}} cents/L next week</span>`;
-    answer.style.color = '#10b981';
+    answer.style.color = '#34d399';
     context.innerHTML =
       `<span class="refuel-context-line saving-line">That’s €${{tankSaving}} saved on a 50L tank</span>` +
       brentLine;
@@ -1490,7 +1501,7 @@ function buildHistoryLegend() {{
     <div class="history-legend-row">
       <span class="history-legend-group">References</span>
       <span class="history-legend-item">
-        <span class="history-line" style="border-color:#fdffbf"></span>Brent (1-week lead)
+        <span class="history-line" style="border-color:#d4c98a"></span>Brent (1-week lead)
       </span>
       <span class="history-legend-item">
         <span class="history-line" style="border-color:#94a3b8"></span>
@@ -1515,20 +1526,20 @@ function buildHistChart() {{
     data: pumpHistoryWithForecast(c),
     borderColor: COLORS[c],
     backgroundColor: 'transparent',
-    borderWidth: c === 'EU' ? 2.5 : 1.8,
+    borderWidth: 1.8,
     pointStyle: ctx => ctx.dataIndex === ctx.dataset.data.length - 1 ? 'rectRot' : 'circle',
     pointRadius: ctx => ctx.dataIndex === ctx.dataset.data.length - 1 ? 5
       : (ctx.dataIndex === ctx.dataset.data.length - 2 ? 3 : 0),
     pointHoverRadius: ctx => ctx.dataIndex === ctx.dataset.data.length - 1 ? 7
       : (ctx.dataIndex === ctx.dataset.data.length - 2 ? 6 : 3),
-    pointBackgroundColor: ctx => ctx.dataIndex === ctx.dataset.data.length - 1 ? '#020817' : COLORS[c],
+    pointBackgroundColor: ctx => ctx.dataIndex === ctx.dataset.data.length - 1 ? '#1a2336' : COLORS[c],
     pointBorderColor: COLORS[c],
     pointBorderWidth: 2,
     segment: {{
       borderDash: ctx => ctx.p1DataIndex === ctx.chart.data.datasets[ctx.datasetIndex].data.length - 1
         ? [7, 4] : undefined,
       borderWidth: ctx => ctx.p1DataIndex === ctx.chart.data.datasets[ctx.datasetIndex].data.length - 1
-        ? 2.6 : undefined
+        ? 2 : undefined
     }},
     tension: 0.15,
     spanGaps: true,
@@ -1541,14 +1552,14 @@ function buildHistChart() {{
     // Daily observations retain their real source date in tooltips but are
     // positioned seven days to the right to show their pump-price lead.
     data: displayedBrentSeries(),
-    borderColor: '#fdffbf',
+    borderColor: BRENT_COLOR,
     backgroundColor: 'transparent',
     borderWidth: 1.5,
     borderDash: [5, 4],
     pointRadius: ctx => ctx.dataIndex === ctx.dataset.data.length - 1 ? 4 : 0,
     pointHoverRadius: ctx => ctx.dataIndex === ctx.dataset.data.length - 1 ? 6 : 3,
-    pointBackgroundColor: '#fdffbf',
-    pointBorderColor: '#020817',
+    pointBackgroundColor: BRENT_COLOR,
+    pointBorderColor: '#1a2336',
     pointBorderWidth: 2,
     tension: 0,
     spanGaps: true,
@@ -1563,7 +1574,7 @@ function buildHistChart() {{
     borderWidth: 1.5,
     borderDash: [6, 4],
     pointStyle: 'rectRot',
-    pointBackgroundColor: '#020817',
+    pointBackgroundColor: '#1a2336',
     pointBorderColor: '#94a3b8',
   }});
 
@@ -1613,7 +1624,7 @@ function buildHistChart() {{
           }}
         }},
         tooltip: {{
-          backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1,
+          backgroundColor: TOOLTIP_BG, borderColor: 'rgba(148,163,184,.2)', borderWidth: 1,
           titleColor: '#94a3b8', bodyColor: '#e2e8f0',
           xAlign: 'left', yAlign: 'center',
           titleAlign: 'left', bodyAlign: 'left',
@@ -1672,19 +1683,19 @@ function buildHistChart() {{
               day:'numeric', month:'short', year:'2-digit', timeZone:'UTC'
             }})
           }},
-          grid: {{ color: '#1e293b' }}
+          grid: {{ color: CHART_GRID }}
         }},
         y: {{
           position: 'right',
           ticks: {{ color: '#e2e8f0', callback: v => `€${{v.toFixed(2)}}`, font: {{ size: 13, weight: '600' }} }},
-          grid: {{ color: '#1e293b' }},
+          grid: {{ color: CHART_GRID }},
           title: {{ display: true, text: 'Pump price (€/L)', color: '#e2e8f0', font: {{ size: 13, weight: '600' }} }},
         }},
         y2: {{
           position: 'left',
-          ticks: {{ color: '#fdffbf99', callback: v => `$${{v.toFixed(0)}}`, font: {{ size: 13, weight: '600' }} }},
+          ticks: {{ color: '#d4c98acc', callback: v => `$${{v.toFixed(0)}}`, font: {{ size: 13, weight: '600' }} }},
           grid: {{ display: false }},
-          title: {{ display: true, text: 'Brent ($/bbl)', color: '#fdffbf99', font: {{ size: 13, weight: '600' }} }},
+          title: {{ display: true, text: 'Brent ($/bbl)', color: '#d4c98acc', font: {{ size: 13, weight: '600' }} }},
         }}
       }}
     }},
@@ -1795,7 +1806,7 @@ function buildHistChart() {{
         ctx.fillRect(x - 5, y - 4, width + 10, 46);
         ctx.fillStyle = '#cbd5e1';
         ctx.fillText(titleLabel, x, y);
-        ctx.fillStyle = '#fdffbf';
+        ctx.fillStyle = BRENT_COLOR;
         ctx.fillText(valueLabel, x, y + 14);
         ctx.fillStyle = '#cbd5e1';
         ctx.fillText(shiftedDate, x, y + 28);
@@ -1881,7 +1892,7 @@ function buildPriceChart() {{
       plugins: {{
         legend: {{ display: false }},
         tooltip: {{
-          backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1,
+          backgroundColor: TOOLTIP_BG, borderColor: 'rgba(148,163,184,.2)', borderWidth: 1,
           titleColor: '#94a3b8', bodyColor: '#e2e8f0',
           callbacks: {{
             title: items => items.length ? `${{items[0].label}} · ${{items[0].dataset.label}}` : '',
@@ -1904,12 +1915,12 @@ function buildPriceChart() {{
         }},
       }},
       scales: {{
-        x: {{ ticks: {{ color: '#e2e8f0', font: {{ size: 12, weight: 700 }} }}, grid: {{ color: '#1e293b' }} }},
+        x: {{ ticks: {{ color: '#e2e8f0', font: {{ size: 12, weight: 700 }} }}, grid: {{ color: CHART_GRID }} }},
         y: {{
           min: 1.30,
           grace: '10%',
           ticks: {{ color: '#e2e8f0', callback: v => `€${{v.toFixed(2)}}`, font: {{ size: 13, weight: '600' }} }},
-          grid: {{ color: '#1e293b' }},
+          grid: {{ color: CHART_GRID }},
           title: {{ display: true, text: '€/L', color: '#e2e8f0', font: {{ size: 13, weight: '600' }} }},
         }},
       }},
@@ -2086,16 +2097,16 @@ function buildYTD() {{
       plugins: {{
         legend: {{ labels: {{ color: '#94a3b8', font: {{ size: 11 }} }} }},
         tooltip: {{
-          backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1,
+          backgroundColor: TOOLTIP_BG, borderColor: 'rgba(148,163,184,.2)', borderWidth: 1,
           titleColor: '#94a3b8', bodyColor: '#e2e8f0',
           callbacks: {{ label: ctx => ` ${{ctx.dataset.label}}: ${{ctx.raw?.toFixed(2)}}%` }}
         }}
       }},
       scales: {{
-        x: {{ ticks: {{ color: '#e2e8f0', font: {{ size: 12, weight: 700 }} }}, grid: {{ color: '#1e293b' }} }},
+        x: {{ ticks: {{ color: '#e2e8f0', font: {{ size: 12, weight: 700 }} }}, grid: {{ color: CHART_GRID }} }},
         y: {{
           ticks: {{ color: '#e2e8f0', callback: v => v+'%', font: {{ size: 13, weight: '600' }} }},
-          grid: {{ color: '#1e293b' }},
+          grid: {{ color: CHART_GRID }},
           title: {{ display: true, text: 'Pump price YTD (%)', color: '#e2e8f0', font: {{ size: 13, weight: '600' }} }},
         }},
         y2: {{
@@ -2183,7 +2194,7 @@ function buildYTD() {{
       plugins: {{
         legend: {{ labels: {{ color: '#94a3b8', font: {{ size: 11 }} }} }},
         tooltip: {{
-          backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1,
+          backgroundColor: TOOLTIP_BG, borderColor: 'rgba(148,163,184,.2)', borderWidth: 1,
           titleColor: '#94a3b8', bodyColor: '#e2e8f0',
           callbacks: {{
             label: ctx => ctx.datasetIndex < 2
@@ -2193,10 +2204,10 @@ function buildYTD() {{
         }}
       }},
       scales: {{
-        x: {{ ticks: {{ color: '#e2e8f0', font: {{ size: 12, weight: 700 }} }}, grid: {{ color: '#1e293b' }} }},
+        x: {{ ticks: {{ color: '#e2e8f0', font: {{ size: 12, weight: 700 }} }}, grid: {{ color: CHART_GRID }} }},
         y: {{
           ticks: {{ color: '#e2e8f0', callback: v => (v >= 0 ? '+' : '') + v.toFixed(2) + '€', font: {{ size: 13, weight: '600' }} }},
-          grid: {{ color: '#1e293b' }},
+          grid: {{ color: CHART_GRID }},
           title: {{ display: true, text: 'Pump price change (€/L)', color: '#e2e8f0', font: {{ size: 13, weight: '600' }} }},
         }},
         y2: {{
@@ -2332,16 +2343,16 @@ function buildTaxCharts() {{
     plugins: {{
       legend: {{ labels: {{ color:'#94a3b8', font:{{ size:10 }} }} }},
       tooltip: {{
-        backgroundColor:'#0f172a', borderColor:'#334155', borderWidth:1,
+        backgroundColor:TOOLTIP_BG, borderColor:'rgba(148,163,184,.2)', borderWidth:1,
         titleColor:'#94a3b8', bodyColor:'#e2e8f0',
         callbacks: {{ label: ctx => ` ${{ctx.dataset.label}}: €${{ctx.raw?.toFixed(3) ?? '—'}}/L` }}
       }}
     }},
     scales: {{
-      x: {{ stacked:true, ticks:{{ color:'#e2e8f0', font:{{ size:11 }} }}, grid:{{ color:'#1e293b' }} }},
+      x: {{ stacked:true, ticks:{{ color:'#e2e8f0', font:{{ size:11 }} }}, grid:{{ color:CHART_GRID }} }},
       y: {{ stacked:true,
             ticks:{{ color:'#e2e8f0', callback: v=>`€${{v.toFixed(2)}}`, font:{{ size:10 }} }},
-            grid:{{ color:'#1e293b' }} }}
+            grid:{{ color:CHART_GRID }} }}
     }}
   }};
 
@@ -2440,14 +2451,14 @@ function consLegendOpts(tooltipFmt) {{
         }}
       }},
       tooltip: {{
-        backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1,
+        backgroundColor: TOOLTIP_BG, borderColor: 'rgba(148,163,184,.2)', borderWidth: 1,
         titleColor: '#94a3b8', bodyColor: '#e2e8f0',
         callbacks: {{ label: tooltipFmt }}
       }}
     }},
     scales: {{
-      x: {{ stacked: true, ticks: {{ color:'#e2e8f0', font:{{ size:13, weight:'700' }} }}, grid:{{ color:'#1e293b' }} }},
-      y: {{ stacked: true, ticks: {{ color:'#e2e8f0', font:{{ size:10 }} }},               grid:{{ color:'#1e293b' }} }}
+      x: {{ stacked: true, ticks: {{ color:'#e2e8f0', font:{{ size:13, weight:'700' }} }}, grid:{{ color:CHART_GRID }} }},
+      y: {{ stacked: true, ticks: {{ color:'#e2e8f0', font:{{ size:10 }} }},               grid:{{ color:CHART_GRID }} }}
     }}
   }};
 }}
@@ -2559,17 +2570,17 @@ function buildSensitivity() {{
         plugins: {{
           legend: {{ labels: {{ color: '#94a3b8', font: {{ size: 11 }} }} }},
           tooltip: {{
-            backgroundColor: '#0f172a', borderColor: '#334155', borderWidth: 1,
+            backgroundColor: TOOLTIP_BG, borderColor: 'rgba(148,163,184,.2)', borderWidth: 1,
             titleColor: '#94a3b8', bodyColor: '#e2e8f0',
             callbacks: {{ label: ctx => ` ${{ctx.dataset.label}}: +${{(ctx.raw/100)?.toFixed(2)}}€/L per $10 Brent` }}
           }}
         }},
         scales: {{
-          x: {{ ticks: {{ color: '#e2e8f0', font: {{ size: 12, weight: 700 }} }}, grid: {{ color: '#1e293b' }} }},
+          x: {{ ticks: {{ color: '#e2e8f0', font: {{ size: 12, weight: 700 }} }}, grid: {{ color: CHART_GRID }} }},
           y: {{
             min: 0,
             ticks: {{ color: '#e2e8f0', callback: v => '+' + (v/100).toFixed(2) + '€', font: {{ size: 13, weight: '600' }} }},
-            grid: {{ color: '#1e293b' }},
+            grid: {{ color: CHART_GRID }},
             title: {{ display: true, text: '€/L per $10 Brent', color: '#e2e8f0', font: {{ size: 13, weight: '600' }} }},
           }},
         }},
