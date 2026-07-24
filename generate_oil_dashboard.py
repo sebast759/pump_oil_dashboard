@@ -10,8 +10,9 @@ HTML dashboard with:
   - Consumption mix by country
 
 Usage:
-    python generate_oil_dashboard.py --local             # quick local build using cached data
-    python generate_oil_dashboard.py --no-push           # refresh online data without publishing
+    python generate_oil_dashboard.py                     # refresh data and create local index.html
+    python generate_oil_dashboard.py --local             # local index.html using cached data
+    python generate_oil_dashboard.py --push              # generate and publish to GitHub Pages
     python generate_oil_dashboard.py path/to/file.xlsx   # use a specific Excel file
     python generate_oil_dashboard.py --local --output my.html
                                                         # custom local output file
@@ -2701,7 +2702,7 @@ function buildSensitivity() {{
 WEBPAGE_NAME  = "oil_dashboard"
 GHPAGES_REPO  = Path(__file__).resolve().parent.parent / "sebast759.github.io"
 GHPAGES_REMOTE = "https://github.com/sebast759/sebast759.github.io.git"
-DEFAULT_OUT   = str(GHPAGES_REPO / WEBPAGE_NAME / "index.html")
+DEFAULT_OUT   = str(Path(__file__).resolve().parent / "index.html")
 
 
 def push_to_github_pages(html: str, token: str):
@@ -2758,11 +2759,10 @@ def push_to_github_pages(html: str, token: str):
     print(f"  Live at https://{owner}.github.io/{file_path.split('/')[0]}/")
 
 
-def git_push(ghpages_repo: Path, webpage_name: str):
+def git_push(ghpages_repo: Path, webpage_name: str, source_file: Path):
     """Publish through a clean temporary checkout, preserving local Pages edits."""
     import subprocess
     print("\nPushing to GitHub Pages ...")
-    source_file = ghpages_repo / webpage_name / "index.html"
     generated_html = source_file.read_bytes()
 
     with tempfile.TemporaryDirectory(prefix="oil-dashboard-pages-") as tmp:
@@ -2804,11 +2804,11 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python generate_oil_dashboard.py                  # auto-download if needed, use cache if fresh
+  python generate_oil_dashboard.py                  # refresh data and create ./index.html
   python generate_oil_dashboard.py --download       # force re-download from EC website
   python generate_oil_dashboard.py my_file.xlsx     # use a specific local file
-  python generate_oil_dashboard.py --no-push        # generate only, skip git push
   python generate_oil_dashboard.py --local          # skip all network calls, use cache
+  python generate_oil_dashboard.py --push           # generate and publish to GitHub Pages
 
 Output (default):
   """ + DEFAULT_OUT
@@ -2821,36 +2821,40 @@ Output (default):
                         help="Force re-download the latest file from EC website")
     parser.add_argument("--cache-dir", default=".",
                         help="Directory for cached xlsx (default: current folder)")
+    parser.add_argument("--push", action="store_true",
+                        help="Publish after generating (default: local file only)")
     parser.add_argument("--no-push", action="store_true",
-                        help="Skip git push — just generate the HTML locally")
+                        help=argparse.SUPPRESS)
     parser.add_argument("--local", action="store_true",
                         help="Skip all network calls; use cached xlsx and brent_cache.csv")
     args = parser.parse_args()
+    if args.push and args.no_push:
+        parser.error("--push and --no-push cannot be used together")
+    if args.push and args.local:
+        parser.error("--push cannot be combined with --local")
 
     xlsx_path = resolve_xlsx(args.input, args.download, Path(args.cache_dir), local=args.local)
 
     data = extract_data(xlsx_path, local=args.local)
     html = build_html(data)
 
-    github_token = os.environ.get("PAGES_TOKEN")
+    out_path = Path(args.output)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(html, encoding="utf-8")
+    print(f"\n  Dashboard saved to: {out_path.resolve()}")
 
-    if github_token and not args.no_push:
-        # Heroku / CI: push directly via GitHub API — no local git repo needed
-        print("\nPushing to GitHub Pages via API ...")
-        push_to_github_pages(html, github_token)
-    else:
-        # Local: write file to disk, optionally git-push
-        out_path = Path(args.output)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_text(html, encoding="utf-8")
-        print(f"\n  Dashboard saved to: {out_path.resolve()}")
-
-        if not args.no_push and not args.local:
-            if GHPAGES_REPO.exists():
-                git_push(GHPAGES_REPO, WEBPAGE_NAME)
-            else:
-                print(f"  WARNING: GitHub Pages repo not found at {GHPAGES_REPO}")
-                print(f"  Run with --no-push or set GITHUB_TOKEN for API push.")
+    if args.push:
+        github_token = os.environ.get("PAGES_TOKEN")
+        if github_token:
+            print("\nPushing to GitHub Pages via API ...")
+            push_to_github_pages(html, github_token)
+        elif GHPAGES_REPO.exists():
+            git_push(GHPAGES_REPO, WEBPAGE_NAME, out_path)
+        else:
+            parser.error(
+                f"cannot push: Pages repo not found at {GHPAGES_REPO} "
+                "and PAGES_TOKEN is not set"
+            )
 
 
 if __name__ == "__main__":

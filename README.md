@@ -47,7 +47,7 @@ A research table cross-tabulates 4W / 26W windows × 0–2 week lags to validate
 ```bash
 pip install openpyxl
 
-# Full run — downloads fresh data, writes to ../sebast759.github.io/oil_dashboard/index.html
+# Full run — downloads fresh data and writes ./index.html
 python generate_oil_dashboard.py
 
 # Force re-download even if cache is fresh
@@ -56,8 +56,8 @@ python generate_oil_dashboard.py --download
 # Use cached files only, skip all network calls
 python generate_oil_dashboard.py --local
 
-# Generate without pushing
-python generate_oil_dashboard.py --no-push
+# Explicitly publish through the retained legacy Pages publisher
+python generate_oil_dashboard.py --push
 
 # Custom output path
 python generate_oil_dashboard.py --output ./preview.html
