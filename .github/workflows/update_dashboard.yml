@@ -11,7 +11,7 @@ on:
   workflow_dispatch:  # allow manual trigger from the Actions tab
 
 permissions:
-  contents: write
+  contents: read
   pages: write
   id-token: write
 
@@ -53,15 +53,6 @@ jobs:
         run: python generate_oil_dashboard.py --output site/index.html
         env:
           GOATCOUNTER_SITE_CODE: ${{ vars.GOATCOUNTER_SITE_CODE }}
-
-      - name: Commit generated dashboard
-        run: |
-          cp site/index.html index.html
-          git config user.name "GitHub Actions Bot"
-          git config user.email "actions@github.com"
-          git add index.html
-          git diff --cached --quiet || git commit -m "Update generated fuel dashboard"
-          git push
 
       - name: Upload dashboard
         uses: actions/upload-pages-artifact@v3
