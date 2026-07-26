@@ -28,6 +28,8 @@ import math
 import base64
 import argparse
 import tempfile
+import shutil
+import re
 from pathlib import Path
 from datetime import datetime, date, timezone, timedelta
 
@@ -566,6 +568,75 @@ def extract_data(xlsx_path: Path, local: bool = False) -> dict:
 # HTML GENERATION
 # ---------------------------------------------------------------------------
 CHART_JS_CDN = "https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"
+SITE_ASSET_NAMES = (
+    "og-image.png",
+    "favicon.ico",
+    "favicon-192.png",
+    "favicon-512.png",
+    "apple-touch-icon.png",
+)
+STORY_PHOTO_NAME = "seb-dog-drive.jpg"
+
+
+def emit_site_support_files(output_dir: Path) -> None:
+    """Emit static SEO, discovery, and identity files beside the dashboard."""
+    source_dir = Path(__file__).parent / "assets" / "site"
+    for name in SITE_ASSET_NAMES:
+        source = source_dir / name
+        if not source.is_file():
+            raise FileNotFoundError(f"Required site asset is missing: {source}")
+        destination = output_dir / name
+        if source.resolve() != destination.resolve():
+            shutil.copy2(source, destination)
+
+    story_source = Path(__file__).parent / "assets" / STORY_PHOTO_NAME
+    if not story_source.is_file():
+        raise FileNotFoundError(f"Required story photo is missing: {story_source}")
+    story_destination = output_dir / STORY_PHOTO_NAME
+    if story_source.resolve() != story_destination.resolve():
+        shutil.copy2(story_source, story_destination)
+
+    (output_dir / "robots.txt").write_text(
+        "User-agent: *\nAllow: /\n\nSitemap: https://fuelforecast.eu/sitemap.xml\n",
+        encoding="utf-8",
+    )
+    (output_dir / "sitemap.xml").write_text(
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        "  <url>\n"
+        "    <loc>https://fuelforecast.eu/</loc>\n"
+        "    <changefreq>daily</changefreq>\n"
+        "  </url>\n"
+        "</urlset>\n",
+        encoding="utf-8",
+    )
+    (output_dir / "site.webmanifest").write_text(
+        json.dumps(
+            {
+                "name": "Fuel Forecast",
+                "short_name": "Fuel Forecast",
+                "start_url": "/",
+                "display": "standalone",
+                "background_color": "#131a2a",
+                "theme_color": "#131a2a",
+                "icons": [
+                    {
+                        "src": "/favicon-192.png",
+                        "sizes": "192x192",
+                        "type": "image/png",
+                    },
+                    {
+                        "src": "/favicon-512.png",
+                        "sizes": "512x512",
+                        "type": "image/png",
+                    },
+                ],
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
 
 
 def build_html(data: dict) -> str:
@@ -575,14 +646,88 @@ def build_html(data: dict) -> str:
     data_js        = json.dumps(data)
     illustration_path = Path(__file__).parent / "assets" / "refuel-nozzle.png"
     refuel_illustration = base64.b64encode(illustration_path.read_bytes()).decode()
+    goatcounter_code = (
+        os.environ.get("GOATCOUNTER_SITE_CODE") or "sebast9"
+    ).strip()
+    if goatcounter_code and not re.fullmatch(r"[A-Za-z0-9-]+", goatcounter_code):
+        raise ValueError(
+            "GOATCOUNTER_SITE_CODE may contain only letters, numbers, and hyphens"
+        )
+    analytics_html = (
+        f'<script data-goatcounter="https://{goatcounter_code}.goatcounter.com/count" '
+        'async src="https://gc.zgo.at/count.js"></script>'
+        if goatcounter_code else ""
+    )
 
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EU Weekly Oil Bulletin Dashboard</title>
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛢️</text></svg>">
+<title>Fuel Forecast · European Pump Prices &amp; Next Week Outlook</title>
+<meta name="description" content="Weekly diesel and Euro-95 pump prices across Europe, with a next-week forecast from Brent crude moves. Should you fill up now or wait?">
+<meta name="robots" content="index, follow">
+<meta name="author" content="Fuel Forecast">
+<meta name="theme-color" content="#131a2a">
+<link rel="canonical" href="https://fuelforecast.eu/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Fuel Forecast">
+<meta property="og:locale" content="en_GB">
+<meta property="og:url" content="https://fuelforecast.eu/">
+<meta property="og:title" content="Fuel Forecast · European Pump Prices &amp; Next Week Outlook">
+<meta property="og:description" content="Weekly diesel and Euro-95 pump prices across Europe, with a next-week forecast from Brent crude moves. Should you fill up now or wait?">
+<meta property="og:image" content="https://fuelforecast.eu/og-image.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="Fuel Forecast next-week outlook and European pump-price chart">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Fuel Forecast · European Pump Prices &amp; Next Week Outlook">
+<meta name="twitter:description" content="Weekly diesel and Euro-95 pump prices across Europe, with a next-week forecast from Brent crude moves. Should you fill up now or wait?">
+<meta name="twitter:image" content="https://fuelforecast.eu/og-image.png">
+<meta name="twitter:image:alt" content="Fuel Forecast next-week outlook and European pump-price chart">
+<script type="application/ld+json">
+{{
+  "@context": "https://schema.org",
+  "@graph": [
+    {{
+      "@type": "WebSite",
+      "@id": "https://fuelforecast.eu/#website",
+      "name": "Fuel Forecast",
+      "url": "https://fuelforecast.eu/",
+      "description": "Weekly European pump prices with a practical next-week fuel-price outlook.",
+      "inLanguage": "en"
+    }},
+    {{
+      "@type": "Dataset",
+      "@id": "https://fuelforecast.eu/#dataset",
+      "name": "Fuel Forecast European Pump Price and Brent Dataset",
+      "description": "A derived presentation of weekly European diesel and Euro-95 pump prices alongside daily Brent spot prices.",
+      "url": "https://fuelforecast.eu/",
+      "isAccessibleForFree": true,
+      "license": "https://commission.europa.eu/legal-notice_en",
+      "creator": {{"@type": "Organization", "name": "Fuel Forecast"}},
+      "variableMeasured": ["Diesel pump price", "Euro-95 pump price", "Brent spot price"],
+      "isBasedOn": [
+        {{
+          "@type": "Dataset",
+          "name": "European Commission Weekly Oil Bulletin",
+          "url": "https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en"
+        }},
+        {{
+          "@type": "Dataset",
+          "name": "FRED Crude Oil Prices: Brent - Europe (DCOILBRENTEU)",
+          "url": "https://fred.stlouisfed.org/series/DCOILBRENTEU"
+        }}
+      ]
+    }}
+  ]
+}}
+</script>
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
 <script src="{CHART_JS_CDN}"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -804,7 +949,7 @@ canvas {{ max-width: 100%; }}
   border: 1px solid var(--border); border-radius: 12px;
 }}
 .about-hero h2 {{ color:#f8fafc; font-size:24px; margin-bottom:10px; }}
-.about-hero p {{ color:#cbd5e1; font-size:14px; line-height:1.7; max-width:820px; }}
+.about-hero p {{ color:#cbd5e1; font-size:11pt; line-height:1.7; max-width:820px; }}
 .about-grid {{
   display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:20px;
 }}
@@ -815,16 +960,34 @@ canvas {{ max-width: 100%; }}
 }}
 .source-card:hover {{ border-color:#f59e0b; transform:translateY(-2px); }}
 .source-kicker {{
-  color:#60a5fa; font-size:10px; font-weight:800;
+  color:#60a5fa; font-size:10pt; font-weight:800;
   letter-spacing:.12em; text-transform:uppercase; margin-bottom:8px;
 }}
-.source-title {{ color:#f8fafc; font-size:15px; font-weight:800; margin-bottom:7px; }}
-.source-copy {{ color:#94a3b8; font-size:12px; line-height:1.55; }}
-.source-link {{ color:#f59e0b; font-size:11px; font-weight:700; margin-top:12px; }}
+.source-title {{ color:#f8fafc; font-size:13pt; font-weight:800; margin-bottom:7px; }}
+.source-copy {{ color:#cbd5e1; font-size:11pt; line-height:1.6; }}
+.source-link {{ color:#f59e0b; font-size:10.5pt; font-weight:700; margin-top:12px; }}
 .about-copy {{ padding:20px; }}
-.about-copy h3 {{ color:#e2e8f0; font-size:15px; margin-bottom:8px; }}
-.about-copy p, .about-copy li {{ color:#94a3b8; font-size:12px; line-height:1.7; }}
+.about-copy h3 {{ color:#e2e8f0; font-size:13pt; margin-bottom:8px; }}
+.about-copy p, .about-copy li {{ color:#cbd5e1; font-size:11pt; line-height:1.7; }}
 .about-copy ul {{ padding-left:18px; }}
+.panel#tab5 > .section-title {{ font-size:14pt; }}
+.about-site {{
+  margin-top:20px; padding:22px;
+  background:var(--bg-card); border:1px solid var(--border); border-radius:10px;
+}}
+.about-site h3 {{ color:#f8fafc; font-size:16px; margin-bottom:10px; }}
+.about-site-layout {{
+  display:grid; grid-template-columns:minmax(0,1fr) 260px;
+  gap:24px; align-items:center;
+}}
+.about-site p {{ color:#cbd5e1; font-size:11pt; line-height:1.7; max-width:880px; }}
+.about-site-photo {{
+  display:block; width:100%; aspect-ratio:4/5; object-fit:cover;
+  border-radius:10px; border:1px solid var(--border);
+}}
+.about-contact {{ margin-top:15px; color:#94a3b8; font-size:11pt; line-height:1.8; }}
+.about-contact a {{ color:#f59e0b; text-decoration:none; font-weight:700; }}
+.about-contact a:hover {{ text-decoration:underline; }}
 /* Responsive */
 @media (max-width: 900px) {{
   .grid-2 {{ grid-template-columns: 1fr; }}
@@ -833,6 +996,8 @@ canvas {{ max-width: 100%; }}
   .price-badges {{ display: none; }}
   .content {{ padding: 16px; }}
   .header {{ padding: 16px 16px 0; }}
+  .about-site-layout {{ grid-template-columns:1fr; }}
+  .about-site-photo {{ width:min(100%,360px); margin:0 auto; }}
 }}
 </style>
 </head>
@@ -844,8 +1009,8 @@ canvas {{ max-width: 100%; }}
       <div class="header-title">
         <div class="logo">🛢️</div>
         <div>
-          <h1>Should you fill up now or wait?</h1>
-          <div class="subtitle"><em>Weekly pump prices in Europe with a next-week signal.</em></div>
+          <h1>Fuel Forecast</h1>
+          <div class="subtitle">Should you fill up now or wait? Weekly pump prices in Europe with a next-week signal.</div>
           <button type="button" onclick="showTab(5)"
                   style="margin-top:5px;padding:0;border:0;background:none;color:#f59e0b;font:600 11px 'Inter','DM Sans',sans-serif;cursor:pointer;">
             About &amp; data sources →
@@ -1084,12 +1249,13 @@ canvas {{ max-width: 100%; }}
         </ul>
       </div>
     </div>
+
   </div>
 
   <!-- TAB 5: About & Sources -->
   <div class="panel" id="tab5">
     <div class="about-hero">
-      <h2>Should you refuel now or wait a week?</h2>
+      <h2>Fuel Forecast: should you refuel now or wait a week?</h2>
       <p>
         Crude moves first, pump prices follow with a lag of about a week.
         This tool tracks that lag across Europe and turns the latest Brent move
@@ -1100,44 +1266,38 @@ canvas {{ max-width: 100%; }}
       </p>
     </div>
 
-    <div class="section-title" style="margin-bottom:12px;">Primary data sources</div>
-    <div class="about-grid">
-      <a class="source-card"
-         href="https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en"
-         target="_blank" rel="noopener noreferrer">
-        <div class="source-kicker">Pump prices</div>
-        <div class="source-title">European Commission Weekly Oil Bulletin</div>
-        <div class="source-copy">
-          Weekly consumer prices including and excluding taxes, plus duties and
-          petroleum-consumption data for European countries.
+    <div class="about-site">
+      <h3>About this site</h3>
+      <div class="about-site-layout">
+        <div>
+          <p>
+            My name is Seb and I live in Portugal. When the Iran war started on a
+            Saturday, gasoline was at €1.50 and I drove straight to the station ⛽,
+            expecting a queue. There was none. I filled up alone.
+          </p>
+          <p style="margin-top:10px;">
+            Over the following days Brent jumped from $70 to almost $140 📈 and pump prices from €1.60 to
+            €2.30. Stations take a few days to catch up with crude, and as a driver
+            that lag is your opportunity 💡.
+          </p>
+          <p style="margin-top:10px;">
+            This website is as simple as that: how much do you save on a full tank
+            if you fill up this Friday instead of waiting until Tuesday next week ❓
+          </p>
+          <p style="margin-top:6px;font-weight:700;color:#f8fafc;">
+            We give you the answer.
+          </p>
+          <div class="about-contact">
+            Contact · <span id="site-contact">smaillard75 [at] gmail [dot] com</span>
+          </div>
         </div>
-        <div class="source-link">Open official source ↗</div>
-      </a>
-      <a class="source-card"
-         href="https://fred.stlouisfed.org/series/DCOILBRENTEU"
-         target="_blank" rel="noopener noreferrer">
-        <div class="source-kicker">Official Brent spot</div>
-        <div class="source-title">FRED · DCOILBRENTEU</div>
-        <div class="source-copy">
-          Daily Europe Brent spot price in US dollars per barrel. This is the
-          preferred Brent series wherever an official observation is available.
-        </div>
-        <div class="source-link">View the FRED series ↗</div>
-      </a>
-      <a class="source-card"
-         href="https://finance.yahoo.com/quote/BZ%3DF/"
-         target="_blank" rel="noopener noreferrer">
-        <div class="source-kicker">Latest market extension</div>
-        <div class="source-title">Yahoo Finance · BZ=F</div>
-        <div class="source-copy">
-          Brent futures observations used to fill unpublished FRED trading dates
-          and extend the series beyond FRED's latest release after level adjustment.
-        </div>
-        <div class="source-link">View the Yahoo quote ↗</div>
-      </a>
+        <img class="about-site-photo" src="/seb-dog-drive.jpg"
+             alt="Dog looking out of a car window during a drive in Portugal"
+             loading="lazy">
+      </div>
     </div>
 
-    <div class="grid-2">
+    <div class="grid-2" style="margin-top:20px;">
       <div class="card about-copy">
         <h3>What we watch</h3>
         <ul>
@@ -1160,12 +1320,50 @@ canvas {{ max-width: 100%; }}
         </p>
       </div>
     </div>
+
+    <div class="section-title" style="margin:20px 0 12px;">Primary data sources</div>
+    <div class="about-grid">
+      <a class="source-card"
+         href="https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en"
+         target="_blank" rel="noopener noreferrer">
+        <div class="source-kicker">Pump prices</div>
+        <div class="source-title">EU Commission Weekly Oil Bulletin</div>
+        <div class="source-copy">
+          Weekly consumer prices including and excluding taxes, plus duties and
+          petroleum-consumption data for European countries.
+        </div>
+        <div class="source-link">Open official source ↗</div>
+      </a>
+      <a class="source-card"
+         href="https://fred.stlouisfed.org/series/DCOILBRENTEU"
+         target="_blank" rel="noopener noreferrer">
+        <div class="source-kicker">Brent Crude Oil - History</div>
+        <div class="source-title">FRED · DCOILBRENTEU</div>
+        <div class="source-copy">
+          Daily Europe Brent spot price in US dollars per barrel. This is the
+          preferred Brent series wherever an official observation is available.
+        </div>
+        <div class="source-link">View the FRED series ↗</div>
+      </a>
+      <a class="source-card"
+         href="https://finance.yahoo.com/quote/BZ%3DF/"
+         target="_blank" rel="noopener noreferrer">
+        <div class="source-kicker">Brent Crude Oil - Real Time</div>
+        <div class="source-title">Yahoo Finance · BZ=F</div>
+        <div class="source-copy">
+          Brent futures observations used to fill unpublished FRED trading dates
+          and extend the series beyond FRED's latest release after level adjustment.
+        </div>
+        <div class="source-link">View the Yahoo quote ↗</div>
+      </a>
+    </div>
   </div>
 
 </div>
 
-<div style="text-align:center;padding:14px 32px;font-size:10px;color:#94a3b8;border-top:1px solid #1e293b;">
-  Generated <span id="gen-datetime"></span> · Sources: European Commission Weekly Oil Bulletin, FRED &amp; Yahoo Finance
+<div style="text-align:center;padding:16px 32px;font-size:12px;color:#94a3b8;border-top:1px solid #1e293b;">
+  Fuel Forecast · Generated <span id="gen-datetime"></span> · Sources: EU Oil Bulletin, FRED &amp; Yahoo ·
+  <a id="footer-contact" href="#" style="color:#f59e0b;text-decoration:none;">contact me</a>
 </div>
 
 <script>
@@ -1194,6 +1392,9 @@ function fmtVal(v, decimals=1) {{
 
 // ---- INIT ----------------------------------------------------------------
 document.addEventListener('DOMContentLoaded', () => {{
+  const footerContact = $('footer-contact');
+  footerContact.href = ['mai', 'lto:'].join('') +
+    ['smaillard75', 'gmail.com'].join('@');
   const latest = DATA.dates[DATA.dates.length - 1];
   $('table-date').textContent  = latest;
   $('history-status').textContent =
@@ -2692,6 +2893,7 @@ function buildSensitivity() {{
   buildSensResearch();
 }}
 </script>
+{analytics_html}
 </body>
 </html>"""
 
@@ -2841,6 +3043,7 @@ Output (default):
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html, encoding="utf-8")
+    emit_site_support_files(out_path.parent)
     print(f"\n  Dashboard saved to: {out_path.resolve()}")
 
     if args.push:
