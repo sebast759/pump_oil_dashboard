@@ -30,6 +30,7 @@ import argparse
 import tempfile
 import shutil
 import re
+import html as html_lib
 from pathlib import Path
 from datetime import datetime, date, timezone, timedelta
 
@@ -575,7 +576,10 @@ SITE_ASSET_NAMES = (
     "favicon-512.png",
     "apple-touch-icon.png",
 )
-STORY_PHOTO_NAME = "seb-dog-drive.jpg"
+CONTENT_ASSET_NAMES = (
+    "seb-dog-drive.jpg",
+    "fuel-decision-illustration.png",
+)
 
 
 def emit_site_support_files(output_dir: Path) -> None:
@@ -589,12 +593,13 @@ def emit_site_support_files(output_dir: Path) -> None:
         if source.resolve() != destination.resolve():
             shutil.copy2(source, destination)
 
-    story_source = Path(__file__).parent / "assets" / STORY_PHOTO_NAME
-    if not story_source.is_file():
-        raise FileNotFoundError(f"Required story photo is missing: {story_source}")
-    story_destination = output_dir / STORY_PHOTO_NAME
-    if story_source.resolve() != story_destination.resolve():
-        shutil.copy2(story_source, story_destination)
+    for name in CONTENT_ASSET_NAMES:
+        source = Path(__file__).parent / "assets" / name
+        if not source.is_file():
+            raise FileNotFoundError(f"Required content asset is missing: {source}")
+        destination = output_dir / name
+        if source.resolve() != destination.resolve():
+            shutil.copy2(source, destination)
 
     (output_dir / "robots.txt").write_text(
         "User-agent: *\nAllow: /\n\nSitemap: https://fuelforecast.eu/sitemap.xml\n",
@@ -605,6 +610,7 @@ def emit_site_support_files(output_dir: Path) -> None:
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
         "  <url>\n"
         "    <loc>https://fuelforecast.eu/</loc>\n"
+        f"    <lastmod>{date.today().isoformat()}</lastmod>\n"
         "    <changefreq>daily</changefreq>\n"
         "  </url>\n"
         "</urlset>\n",
@@ -659,12 +665,140 @@ def build_html(data: dict) -> str:
         if goatcounter_code else ""
     )
 
+    previous_brent = next(
+        (value for value in reversed(data["brent"][:-1]) if value is not None),
+        None,
+    )
+    latest_brent = (
+        data.get("brent_latest", {}).get("price")
+        if data.get("brent_latest") else None
+    )
+    if latest_brent is None:
+        latest_brent = next(
+            (value for value in reversed(data["brent"]) if value is not None),
+            None,
+        )
+    brent_move = (
+        latest_brent - previous_brent
+        if latest_brent is not None and previous_brent is not None else None
+    )
+    if brent_move is None:
+        current_signal = (
+            "The current signal is unavailable because the latest Brent move "
+            "could not be calculated."
+        )
+    else:
+        diesel_coefficient = 0.09 if brent_move >= 0 else 0.06
+        expected_cents = diesel_coefficient * brent_move * 10
+        rounded_cents = abs(round(expected_cents))
+        if abs(expected_cents) < 2:
+            current_signal = (
+                "The current Diesel signal is NO RUSH because pump prices are "
+                "expected to stay broadly flat next week."
+            )
+        elif expected_cents > 0:
+            current_signal = (
+                f"The current Diesel signal is GO NOW because pump prices could "
+                f"rise by about {rounded_cents} cents/L next week."
+            )
+        else:
+            current_signal = (
+                f"The current Diesel signal is WAIT because pump prices could "
+                f"fall by about {rounded_cents} cents/L next week."
+            )
+    current_signal += (
+        " Fuel Forecast recomputes the signal each week from the latest "
+        "available Brent move."
+    )
+
+    faq_entries = [
+        (
+            "Will fuel prices go up next week?",
+            current_signal,
+        ),
+        (
+            "How do rising oil prices affect pump prices?",
+            "Crude oil moves first, then petrol and diesel prices adjust as "
+            "stations restock. In the EU weekly data, the pass through appears "
+            "with roughly a one week lag.",
+        ),
+        (
+            "How much does a $10 Brent move change pump prices?",
+            "The site’s Diesel estimates are about 9 cents/L when Brent rises "
+            "and about 6 cents/L when Brent falls. This difference is known as "
+            "asymmetric pass through.",
+        ),
+        (
+            "How much can I save by timing a fill up?",
+            "In normal weeks, timing a 50L fill up may save a few euros. The "
+            "difference can be larger after a major crude move such as the "
+            "2026 spike.",
+        ),
+        (
+            "Where does the data come from?",
+            "Pump prices come from the European Commission Weekly Oil Bulletin. "
+            "Brent data comes from FRED and Yahoo Finance.",
+        ),
+        (
+            "Is this a price prediction?",
+            "No. It is an indicative signal from a simple pass through model, "
+            "and local prices can differ.",
+        ),
+    ]
+    faq_items = []
+    for index, (question, answer) in enumerate(faq_entries):
+        question_html = html_lib.escape(question)
+        if index == 1:
+            question_html = (
+                f'<a href="#oil-price-pass-through" '
+                'onclick="showTab(4);setTimeout(()=&gt;'
+                "document.getElementById('oil-price-pass-through')"
+                ".scrollIntoView({behavior:'smooth'}),0)\">"
+                f"{question_html}</a>"
+            )
+        answer_html = html_lib.escape(answer)
+        if index == 4:
+            answer_html = (
+                'Pump prices come from the '
+                '<a href="https://energy.ec.europa.eu/data-and-analysis/'
+                'weekly-oil-bulletin_en" target="_blank" '
+                'rel="noopener noreferrer">European Commission Weekly Oil '
+                'Bulletin</a>. Brent data comes from '
+                '<a href="https://fred.stlouisfed.org/series/DCOILBRENTEU" '
+                'target="_blank" rel="noopener noreferrer">FRED</a> and '
+                '<a href="https://finance.yahoo.com/quote/BZ%3DF/" '
+                'target="_blank" rel="noopener noreferrer">Yahoo Finance</a>.'
+            )
+        faq_items.append(
+            f'<div class="faq-item"><h3>{question_html}</h3>'
+            f'<p>{answer_html}</p></div>'
+        )
+    faq_html = "\n".join(faq_items)
+    faq_schema_js = json.dumps(
+        {
+            "@type": "FAQPage",
+            "@id": "https://fuelforecast.eu/#faq",
+            "mainEntity": [
+                {
+                    "@type": "Question",
+                    "name": question,
+                    "acceptedAnswer": {
+                        "@type": "Answer",
+                        "text": answer,
+                    },
+                }
+                for question, answer in faq_entries
+            ],
+        },
+        ensure_ascii=False,
+    )
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Fuel Forecast · European Pump Prices &amp; Next Week Outlook</title>
+<title>Fuel Forecast · Petrol and Diesel Prices in Europe</title>
 <meta name="description" content="Weekly diesel and Euro-95 pump prices across Europe, with a next-week forecast from Brent crude moves. Should you fill up now or wait?">
 <meta name="robots" content="index, follow">
 <meta name="author" content="Fuel Forecast">
@@ -674,14 +808,14 @@ def build_html(data: dict) -> str:
 <meta property="og:site_name" content="Fuel Forecast">
 <meta property="og:locale" content="en_GB">
 <meta property="og:url" content="https://fuelforecast.eu/">
-<meta property="og:title" content="Fuel Forecast · European Pump Prices &amp; Next Week Outlook">
+<meta property="og:title" content="Fuel Forecast · Petrol and Diesel Prices in Europe">
 <meta property="og:description" content="Weekly diesel and Euro-95 pump prices across Europe, with a next-week forecast from Brent crude moves. Should you fill up now or wait?">
 <meta property="og:image" content="https://fuelforecast.eu/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Fuel Forecast next-week outlook and European pump-price chart">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Fuel Forecast · European Pump Prices &amp; Next Week Outlook">
+<meta name="twitter:title" content="Fuel Forecast · Petrol and Diesel Prices in Europe">
 <meta name="twitter:description" content="Weekly diesel and Euro-95 pump prices across Europe, with a next-week forecast from Brent crude moves. Should you fill up now or wait?">
 <meta name="twitter:image" content="https://fuelforecast.eu/og-image.png">
 <meta name="twitter:image:alt" content="Fuel Forecast next-week outlook and European pump-price chart">
@@ -719,7 +853,8 @@ def build_html(data: dict) -> str:
           "url": "https://fred.stlouisfed.org/series/DCOILBRENTEU"
         }}
       ]
-    }}
+    }},
+    {faq_schema_js}
   ]
 }}
 </script>
@@ -758,15 +893,16 @@ body {{
   display: flex; align-items: flex-start;
   justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;
 }}
-.header-title {{ display: flex; align-items: center; gap: 10px; }}
+.header-title {{ display: flex; align-items: center; gap: 14px; }}
 .logo {{
-  width: 36px; height: 36px;
-  background: linear-gradient(135deg,#f59e0b,#d97706);
-  border-radius: 8px; display: flex; align-items: center;
-  justify-content: center; font-size: 18px;
+  width: 82px; height: 58px; flex: 0 0 82px;
+  display: flex; align-items: center; justify-content: center;
 }}
-h1 {{ font-size: 22px; font-weight: 800; letter-spacing: -0.5px; color: #e2e8f0; }}
-.subtitle {{ font-size: 12px; color: #94a3b8; margin-top: 3px; }}
+.logo img {{
+  display:block; width:100%; height:100%; object-fit:contain;
+}}
+h1 {{ font-size: 24px; font-weight: 800; letter-spacing: -0.5px; color: #f8fafc; }}
+.subtitle {{ font-size: 13px; color: #b6c5d8; margin-top: 3px; }}
 .price-badges {{ display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }}
 .badge {{
   background: var(--bg-inset); border-radius: 8px;
@@ -844,6 +980,26 @@ tr:nth-child(even) {{ background: rgba(33,43,66,.48); }}
 }}
 .toggle-btn.active {{
   border-color: #f59e0b; background: rgba(245,158,11,0.1); color: #f59e0b;
+}}
+.history-section {{
+  margin-top:30px; padding-top:28px;
+  border-top:1px solid rgba(148,163,184,.22);
+}}
+.chart-controls {{
+  width:max-content; max-width:100%; margin:0 auto;
+  padding:13px 18px 12px; border-radius:10px;
+  background:var(--bg-card); border:1px solid var(--border);
+}}
+.chart-controls-title {{
+  color:#64748b; font-size:9px; font-weight:800;
+  letter-spacing:.12em; text-align:center; margin-bottom:9px;
+}}
+.chart-control-row {{
+  display:grid; grid-template-columns:72px auto;
+  gap:10px; align-items:center; margin-top:8px;
+}}
+.chart-control-label {{
+  color:#94a3b8; font-size:10px; font-weight:700; text-align:right;
 }}
 /* TAX bars */
 .tax-bar-row {{
@@ -930,6 +1086,9 @@ button.history-legend-item {{ cursor: pointer; transition: opacity .15s, color .
 @media (max-width: 700px) {{
   .refuel-illustration {{ width:160px; height:110px; left:4px; opacity:.25; }}
   .refuel-copy {{ padding: 2px 12px; position: relative; }}
+  .chart-controls {{ width:100%; }}
+  .chart-control-row {{ grid-template-columns:1fr; justify-items:center; }}
+  .chart-control-label {{ text-align:center; }}
 }}
 canvas {{ max-width: 100%; }}
 /* Info box */
@@ -948,8 +1107,16 @@ canvas {{ max-width: 100%; }}
   background: linear-gradient(135deg, rgba(33,43,66,.96), rgba(26,35,54,.98));
   border: 1px solid var(--border); border-radius: 12px;
 }}
+.about-hero-layout {{
+  display:grid; grid-template-columns:minmax(0,1fr) 320px;
+  gap:26px; align-items:center;
+}}
 .about-hero h2 {{ color:#f8fafc; font-size:24px; margin-bottom:10px; }}
 .about-hero p {{ color:#cbd5e1; font-size:11pt; line-height:1.7; max-width:820px; }}
+.about-hero-image {{
+  display:block; width:100%; aspect-ratio:4/3; object-fit:cover;
+  border-radius:10px; border:1px solid var(--border);
+}}
 .about-grid {{
   display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:20px;
 }}
@@ -982,12 +1149,23 @@ canvas {{ max-width: 100%; }}
 }}
 .about-site p {{ color:#cbd5e1; font-size:11pt; line-height:1.7; max-width:880px; }}
 .about-site-photo {{
-  display:block; width:100%; aspect-ratio:4/5; object-fit:cover;
+  display:block; width:100%; aspect-ratio:1/1; object-fit:cover;
   border-radius:10px; border:1px solid var(--border);
 }}
 .about-contact {{ margin-top:15px; color:#94a3b8; font-size:11pt; line-height:1.8; }}
 .about-contact a {{ color:#f59e0b; text-decoration:none; font-weight:700; }}
 .about-contact a:hover {{ text-decoration:underline; }}
+.faq-section {{
+  margin-top:20px; padding:22px;
+  background:var(--bg-card); border:1px solid var(--border); border-radius:10px;
+}}
+.faq-section > h2 {{ color:#f8fafc; font-size:18pt; margin-bottom:4px; }}
+.faq-item {{ padding:16px 0; border-bottom:1px solid var(--border); }}
+.faq-item:last-child {{ padding-bottom:0; border-bottom:0; }}
+.faq-item h3 {{ color:#e2e8f0; font-size:13pt; margin-bottom:7px; }}
+.faq-item p {{ color:#cbd5e1; font-size:11pt; line-height:1.7; }}
+.faq-item a {{ color:#f59e0b; text-decoration:none; }}
+.faq-item a:hover {{ text-decoration:underline; }}
 /* Responsive */
 @media (max-width: 900px) {{
   .grid-2 {{ grid-template-columns: 1fr; }}
@@ -996,6 +1174,8 @@ canvas {{ max-width: 100%; }}
   .price-badges {{ display: none; }}
   .content {{ padding: 16px; }}
   .header {{ padding: 16px 16px 0; }}
+  .about-hero-layout {{ grid-template-columns:1fr; }}
+  .about-hero-image {{ width:min(100%,520px); margin:0 auto; }}
   .about-site-layout {{ grid-template-columns:1fr; }}
   .about-site-photo {{ width:min(100%,360px); margin:0 auto; }}
 }}
@@ -1007,10 +1187,13 @@ canvas {{ max-width: 100%; }}
   <div class="header-top">
     <div>
       <div class="header-title">
-        <div class="logo">🛢️</div>
+        <div class="logo">
+          <img src="data:image/png;base64,{refuel_illustration}"
+               alt="Fuel Forecast nozzle logo">
+        </div>
         <div>
           <h1>Fuel Forecast</h1>
-          <div class="subtitle">Should you fill up now or wait? Weekly pump prices in Europe with a next-week signal.</div>
+          <div class="subtitle">Petrol and diesel prices in Europe · Should you fill up now or wait?</div>
           <button type="button" onclick="showTab(5)"
                   style="margin-top:5px;padding:0;border:0;background:none;color:#f59e0b;font:600 11px 'Inter','DM Sans',sans-serif;cursor:pointer;">
             About &amp; data sources →
@@ -1047,26 +1230,37 @@ canvas {{ max-width: 100%; }}
              src="data:image/png;base64,{refuel_illustration}"
              alt="" aria-hidden="true">
         <div class="refuel-copy">
-          <div class="refuel-question">Should I refuel now?</div>
+          <div class="refuel-question">Should I refuel my car today?</div>
           <div class="refuel-answer" id="refuel-answer"></div>
           <div class="refuel-context" id="refuel-context"></div>
         </div>
       </div>
-      <div class="section-title" style="text-align:center;">Pump Price History (EUR/L)</div>
-      <div class="section-sub" style="text-align:center;margin-bottom:14px;">Weekly consumer pump prices inclusive of taxes and duties</div>
-      <div style="display:flex;flex-direction:column;gap:8px;align-items:center;">
-        <div class="toggle-row">
-          <button class="toggle-btn" id="btn95" onclick="switchFuel('euro95')">Euro-95</button>
-          <button class="toggle-btn active" id="btnD" onclick="switchFuel('diesel')">Diesel</button>
+      <div class="history-section">
+        <div class="section-title" style="text-align:center;">How have pump prices changed?</div>
+        <div class="section-sub" style="text-align:center;margin-bottom:14px;">Weekly consumer pump prices inclusive of taxes and duties</div>
+        <div class="chart-controls">
+          <div class="chart-controls-title">CHART OPTIONS</div>
+          <div class="chart-control-row">
+            <div class="chart-control-label">Fuel shown</div>
+            <div class="toggle-row" aria-label="Fuel shown on the chart">
+              <button class="toggle-btn" id="btn95" onclick="switchFuel('euro95')">Euro-95</button>
+              <button class="toggle-btn active" id="btnD" onclick="switchFuel('diesel')">Diesel</button>
+            </div>
+          </div>
+          <div class="chart-control-row">
+            <div class="chart-control-label">Time range</div>
+            <div class="toggle-row" aria-label="Time range shown on the chart">
+              <button class="toggle-btn active" id="btnYTD" onclick="setRange(DATA.ytd_weeks)">YTD</button>
+              <button class="toggle-btn" id="btn1Y" onclick="setRange(52)">1Y</button>
+              <button class="toggle-btn" id="btn3Y" onclick="setRange(156)">3Y</button>
+              <button class="toggle-btn" id="btn5Y" onclick="setRange(260)">5Y</button>
+              <button class="toggle-btn" id="btnAll" onclick="setRange(0)">ALL</button>
+            </div>
+          </div>
         </div>
-        <div class="toggle-row">
-          <button class="toggle-btn active" id="btnYTD" onclick="setRange(DATA.ytd_weeks)">YTD</button>
-          <button class="toggle-btn" id="btn1Y" onclick="setRange(52)">1Y</button>
-          <button class="toggle-btn" id="btn3Y" onclick="setRange(156)">3Y</button>
-          <button class="toggle-btn" id="btn5Y" onclick="setRange(260)">5Y</button>
-          <button class="toggle-btn" id="btnAll" onclick="setRange(0)">ALL</button>
+        <div style="display:flex;flex-direction:column;align-items:center;">
+          <div class="section-sub" id="history-status" style="margin-top:10px;"></div>
         </div>
-        <div class="section-sub" id="history-status" style="margin-top:3px;"></div>
       </div>
     </div>
     <div class="card">
@@ -1088,7 +1282,7 @@ canvas {{ max-width: 100%; }}
 
   <!-- TAB 1: YTD -->
   <div class="panel" id="tab1">
-    <div class="section-title"><span id="ytd-year"></span> Price Variation</div>
+    <div class="section-title">How have prices changed in <span id="ytd-year"></span>?</div>
     <div class="section-sub">Change from Jan 1 through latest data point</div>
     <div class="grid-7" id="ytd-cards"></div>
     <div id="ytd-insight"></div>
@@ -1108,7 +1302,7 @@ canvas {{ max-width: 100%; }}
 
   <!-- TAB 2: Tax Analysis -->
   <div class="panel" id="tab2">
-    <div class="section-title">Tax & Duty Breakdown</div>
+    <div class="section-title">How Much Tax Is in 1 Litre?</div>
     <div class="section-sub">Pre-tax product cost vs total duty burden · EUR/litre · Latest data point</div>
     <div class="grid-2">
       <div class="card">
@@ -1131,7 +1325,7 @@ canvas {{ max-width: 100%; }}
   <!-- TAB 3: Consumption -->
   <div class="panel" id="tab3">
     <div style="margin-bottom:20px;">
-      <div class="section-title" style="text-align:center;">Petroleum Consumption — <span id="cons-year"></span></div>
+      <div class="section-title" style="text-align:center;">Which fuels do European countries use? · <span id="cons-year"></span></div>
       <div class="section-sub" style="text-align:center;margin-bottom:14px;">Source: EC Weekly Oil Bulletin · kt (1,000 tonnes)</div>
       <div style="display:flex;justify-content:center;">
         <div class="toggle-row">
@@ -1165,7 +1359,10 @@ canvas {{ max-width: 100%; }}
   <!-- TAB 4: Sensitivity -->
   <div class="panel" id="tab4">
     <div style="margin-bottom:20px;">
-      <div class="section-title" style="text-align:center;">Brent → Pump Price Sensitivity</div>
+      <div class="section-title" id="oil-price-pass-through" style="text-align:center;">How do rising oil prices affect pump prices?</div>
+      <div class="section-sub" style="text-align:center;margin:6px 0 2px;">
+        Crude oil moves first, and the pass through to petrol and diesel prices appears as stations restock.
+      </div>
       <div style="text-align:center;font-size:20px;font-weight:300;color:#f59e0b;margin:6px 0 2px;">
         Suppliers are <span style="text-decoration:underline;">quick</span> to pass on crude oil price increases (~9 cents for every $10 rise),<br>but <span style="text-decoration:underline;">slow</span> to adjust downward (~6 cents for every $10 decline)
       </div>
@@ -1204,7 +1401,7 @@ canvas {{ max-width: 100%; }}
       <em>suppliers are quick to pass on crude price increases but slow to adjust downward</em>.
     </div>
     <div style="margin-top:24px;">
-      <div class="section-title" style="text-align:center;margin-bottom:4px;">Window &amp; Lag Research</div>
+      <div class="section-title" style="text-align:center;margin-bottom:4px;">Why does the model use this time window and lag?</div>
       <div style="text-align:center;font-size:12px;color:#94a3b8;margin-bottom:14px;">
         Pump price rise / decline (€/L) per $10 Brent move &nbsp;·&nbsp; avg across all countries &nbsp;·&nbsp;
         <strong style="color:#f59e0b;">★ = current model choice (4W, lag 1W)</strong>
@@ -1255,15 +1452,22 @@ canvas {{ max-width: 100%; }}
   <!-- TAB 5: About & Sources -->
   <div class="panel" id="tab5">
     <div class="about-hero">
-      <h2>Fuel Forecast: should you refuel now or wait a week?</h2>
-      <p>
-        Crude moves first, pump prices follow with a lag of about a week.
-        This tool tracks that lag across Europe and turns the latest Brent move
-        into one practical signal: fill up now, or wait.
-      </p>
-      <p style="margin-top:12px;color:#93c5fd;font-weight:700;">
-        Official EU pump prices, weekly. Brent spot, daily.
-      </p>
+      <div class="about-hero-layout">
+        <div>
+          <h2>Fuel Forecast: should you refuel now or wait a week?</h2>
+          <p>
+            Crude moves first, pump prices follow with a lag of about a week.
+            This tool tracks that lag across Europe and turns the latest Brent move
+            into one practical signal: fill up now, or wait.
+          </p>
+          <p style="margin-top:12px;color:#93c5fd;font-weight:700;">
+            Official EU pump prices, weekly. Brent spot, daily.
+          </p>
+        </div>
+        <img class="about-hero-image" src="/fuel-decision-illustration.png"
+             alt="Driver considering whether to refuel beside a petrol pump"
+             loading="lazy">
+      </div>
     </div>
 
     <div class="about-site">
@@ -1321,7 +1525,7 @@ canvas {{ max-width: 100%; }}
       </div>
     </div>
 
-    <div class="section-title" style="margin:20px 0 12px;">Primary data sources</div>
+    <div class="section-title" style="margin:20px 0 12px;">Where does the data come from?</div>
     <div class="about-grid">
       <a class="source-card"
          href="https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en"
@@ -1337,7 +1541,7 @@ canvas {{ max-width: 100%; }}
       <a class="source-card"
          href="https://fred.stlouisfed.org/series/DCOILBRENTEU"
          target="_blank" rel="noopener noreferrer">
-        <div class="source-kicker">Brent Crude Oil - History</div>
+        <div class="source-kicker">Brent Crude Oil · History</div>
         <div class="source-title">FRED · DCOILBRENTEU</div>
         <div class="source-copy">
           Daily Europe Brent spot price in US dollars per barrel. This is the
@@ -1348,7 +1552,7 @@ canvas {{ max-width: 100%; }}
       <a class="source-card"
          href="https://finance.yahoo.com/quote/BZ%3DF/"
          target="_blank" rel="noopener noreferrer">
-        <div class="source-kicker">Brent Crude Oil - Real Time</div>
+        <div class="source-kicker">Brent Crude Oil · Real Time</div>
         <div class="source-title">Yahoo Finance · BZ=F</div>
         <div class="source-copy">
           Brent futures observations used to fill unpublished FRED trading dates
@@ -1357,6 +1561,11 @@ canvas {{ max-width: 100%; }}
         <div class="source-link">View the Yahoo quote ↗</div>
       </a>
     </div>
+
+    <section class="faq-section" aria-labelledby="faq-heading">
+      <h2 id="faq-heading">Fuel Price Questions</h2>
+      {faq_html}
+    </section>
   </div>
 
 </div>
