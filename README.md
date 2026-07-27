@@ -1,143 +1,105 @@
-# EU Weekly Oil Bulletin Dashboard
+# Fuel Forecast
 
-Auto-generated dashboard tracking EU retail fuel prices (diesel & Euro-95) across France, Germany, Netherlands, Spain, Italy and Portugal — with Brent crude overlay, YTD performance, tax breakdown, consumption mix and pass-through sensitivity analysis.
+Fuel Forecast tracks weekly diesel and Euro 95 pump prices across Europe and
+uses daily Brent spot prices to provide an indicative next week signal.
 
-**Live dashboard → [fuelforecast.eu](https://fuelforecast.eu/)**
+**Live dashboard: [fuelforecast.eu](https://fuelforecast.eu/)**
 
----
+## Run locally
 
-## What it does
+Install the dependencies:
 
-Each week, the script:
-1. Downloads the latest [EC Weekly Oil Bulletin](https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en) Excel file
-2. Fetches weekly Brent crude prices from Yahoo Finance
-3. Generates a self-contained HTML dashboard
-4. Pushes it to GitHub Pages via the GitHub API
-
-The dashboard updates automatically every **Thursday at 14:00 UTC**, shortly after the EC publishes new data.
-
----
-
-## Dashboard tabs
-
-| Tab | Content |
-|-----|---------|
-| **Historical Prices** | 36-month price lines per country + Brent overlay; YTD bar chart |
-| **YTD Performance** | Year-to-date % change cards and bar chart |
-| **Tax Analysis** | Pre-tax vs tax/duties stacked bars per country |
-| **Consumption** | Fuel mix by country (gasoline, diesel, heating oil, LPG) |
-| **Sensitivity** | OLS pass-through asymmetry: Brent rises passed on faster than declines |
-
----
-
-## Sensitivity methodology
-
-The sensitivity tab measures how much pump prices (€ cents/L) move per $10 Brent move, split by direction:
-
-- **Window**: 4 weeks — standard in the pass-through literature (Borenstein, Cameron & Gilbert 1997, *QJE*)
-- **Lag**: 1 week — aligns Brent signal with EC procurement window (Bacon 1991)
-- **Model**: OLS slope through origin, computed in Python at generation time
-
-A research table cross-tabulates 4W / 26W windows × 0–2 week lags to validate the parameter choice.
-
----
-
-## Running locally
-
-```bash
-pip install openpyxl
-
-# Full run — downloads fresh data and writes ./index.html
-python generate_oil_dashboard.py
-
-# Force re-download even if cache is fresh
-python generate_oil_dashboard.py --download
-
-# Use cached files only, skip all network calls
-python generate_oil_dashboard.py --local
-
-# Explicitly publish through the retained legacy Pages publisher
-python generate_oil_dashboard.py --push
-
-# Custom output path
-python generate_oil_dashboard.py --output ./preview.html
+```powershell
+pip install -r requirements.txt
 ```
 
----
+Generate the complete local website in `site/` using fresh online data:
 
-## Automated deployment (GitHub Actions)
+```powershell
+python generate_oil_dashboard.py
+```
 
-The workflow at `.github/workflows/update_dashboard.yml` runs every Thursday at 14:00 UTC.
+Other useful modes:
 
-### First-time setup
+```powershell
+python generate_oil_dashboard.py --local
+python generate_oil_dashboard.py --download
+python generate_oil_dashboard.py --output preview.html
+python generate_oil_dashboard.py --push
+```
 
-1. Create a GitHub [Personal Access Token](https://github.com/settings/tokens) with **Contents: read & write** access on `sebast759/sebast759.github.io`
-2. Add it as a secret in this repo:
-   - Settings → Secrets and variables → Actions → New secret
-   - Name: `PAGES_TOKEN`
+`--local` uses the cached workbook and Brent data without network calls.
+Both normal and local runs write `site/index.html` and copy its required
+images, favicons and discovery files into the same `site/` directory.
+`--push` retains the optional legacy publishing path, but is not used by the
+normal GitHub Pages deployment.
 
-The workflow then runs `generate_oil_dashboard.py` with `GITHUB_TOKEN` set, which triggers the GitHub API push path (no local git repo required).
+## Automated deployment
 
-### Manual trigger
+`.github/workflows/update_dashboard.yml` generates the site and deploys the
+`site/` artifact directly to GitHub Pages. It runs daily at 14:30 UTC, also
+runs Monday at 07:00 UTC, and can be started manually from the Actions tab.
 
-Actions tab → **Update Oil Dashboard** → **Run workflow**
+## Brent data
 
----
+`brent_spot.py` creates a continuous daily series from:
+
+* official Brent spot observations from FRED `DCOILBRENTEU`
+* adjusted Yahoo Finance `BZ=F` observations for missing and newer dates
+
+FRED observations take priority. Downloads are cached under `.cache/brent`;
+online runs refresh Yahoo's latest market data while avoiding a full history
+download each time.
+
+## Brent aggregation analysis
+
+The research script compares the latest daily Brent print with trailing
+3 day, 5 day and 7 day averages. It calculates directional OLS sensitivity,
+holdout errors and country level estimates, then creates an HTML report and
+CSV tables.
+
+```powershell
+python tests/brent_aggregation.py
+```
+
+Generated research outputs are written to `tests/reports/`. That directory is
+ignored by Git because the files can be recreated.
+
+The command also runs two built in regression checks before starting the full
+analysis. They protect trailing date alignment and the holdout sensitivity
+calculation, so no separate aggregation test script is required.
+
+Run the complete test suite with:
+
+```powershell
+python -m unittest discover -s tests -v
+```
 
 ## Project structure
 
+```text
+oil_dashboard/
+|-- generate_oil_dashboard.py
+|-- brent_spot.py
+|-- requirements.txt
+|-- assets/
+|-- examples/
+|-- tests/
+|   |-- brent_aggregation.py
+|   |-- test_brent_spot.py
+|   `-- reports/                 generated and ignored
+|-- .github/workflows/
+|   `-- update_dashboard.yml
+`-- site/                       generated local website, ignored by Git
 ```
-pump_oil_dashboard/
-├── generate_oil_dashboard.py   # main script — data extraction, OLS, HTML generation
-├── requirements.txt            # openpyxl only
-├── .gitignore                  # excludes *.xlsx and brent_cache.csv
-└── .github/
-    └── workflows/
-        └── update_dashboard.yml
-```
 
-### Runtime cache (local only, git-ignored)
-
-| File | Purpose |
-|------|---------|
-| `*.xlsx` | EC bulletin — re-downloaded if older than 7 days |
-| `brent_cache.csv` | Weekly Brent prices — fallback if Yahoo Finance is unavailable |
-
----
+The generated `site/` directory is a disposable build artifact and is excluded
+from Git. Source images remain under `assets/`. The workbook, `.cache/`,
+`brent_cache.csv` and `__pycache__/` are also local runtime files excluded from
+Git.
 
 ## Data sources
 
-| Data | Source | Frequency |
-|------|--------|-----------|
-| Fuel prices (with/without tax) | [EC Weekly Oil Bulletin](https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en) | Weekly (Thursday) |
-| Brent crude | Yahoo Finance (`BZ=F`) | Weekly + latest daily |
-| Consumption mix | EC Oil Bulletin (Consumption sheet) | Annual |
-
-## Continuous Brent spot series
-
-`brent_spot.py` combines the official FRED `DCOILBRENTEU` spot series with
-Yahoo Finance `BZ=F` closes. FRED observations take priority. Level-adjusted
-Yahoo values fill missing FRED trading days and extend the series after the
-last common trading date.
-
-```python
-from brent_spot import get_continuous_brent_spot
-
-brent = get_continuous_brent_spot(
-    start="2020-01-01",
-    adjustment="rolling",  # or "constant"
-    rolling_window=20,
-)
-```
-
-Provider downloads are cached under `.cache/brent`. After the first complete
-download, refreshes retrieve only the latest 45 calendar days and merge any
-FRED revisions into the local history. The dashboard caches FRED for six
-hours, but refreshes Yahoo's recent tail on every online run. GitHub Actions
-persists the historical cache between scheduled runs.
-Run the tests and comparison plot with:
-
-```bash
-python -m unittest discover -s tests -v
-python -m examples.plot_brent_spot
-```
+* [European Commission Weekly Oil Bulletin](https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en)
+* [FRED Brent Europe spot series](https://fred.stlouisfed.org/series/DCOILBRENTEU)
+* [Yahoo Finance Brent futures](https://finance.yahoo.com/quote/BZ%3DF/)

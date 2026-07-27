@@ -10,6 +10,8 @@ __pycache__/
 .venv/
 venv/
 *.egg-info/
+tests/reports/
+site/
 
 # OS
 .DS_Store

@@ -3,8 +3,6 @@ name: Update Oil Dashboard
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - index.html
   schedule:
     # Every day at 14:30 UTC — updates Brent daily, picks up new EC bulletin on Thursdays
     - cron: '30 14 * * *'

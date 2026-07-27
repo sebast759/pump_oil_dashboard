@@ -10,8 +10,8 @@ HTML dashboard with:
   - Consumption mix by country
 
 Usage:
-    python generate_oil_dashboard.py                     # refresh data and create local index.html
-    python generate_oil_dashboard.py --local             # local index.html using cached data
+    python generate_oil_dashboard.py                     # refresh data and create site/index.html
+    python generate_oil_dashboard.py --local             # site/index.html using cached data
     python generate_oil_dashboard.py --push              # generate and publish to GitHub Pages
     python generate_oil_dashboard.py path/to/file.xlsx   # use a specific Excel file
     python generate_oil_dashboard.py --local --output my.html
@@ -858,11 +858,11 @@ def build_html(data: dict) -> str:
   ]
 }}
 </script>
-<link rel="icon" href="/favicon.ico" sizes="any">
-<link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png">
-<link rel="icon" type="image/png" sizes="512x512" href="/favicon-512.png">
-<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
-<link rel="manifest" href="/site.webmanifest">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="192x192" href="favicon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="favicon-512.png">
+<link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+<link rel="manifest" href="site.webmanifest">
 <script src="{CHART_JS_CDN}"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -1470,7 +1470,7 @@ canvas {{ max-width: 100%; }}
             Official EU pump prices, weekly. Brent spot, daily.
           </p>
         </div>
-        <img class="about-hero-image" src="/fuel-decision-illustration.png"
+        <img class="about-hero-image" src="fuel-decision-illustration.png"
              alt="Driver considering whether to refuel beside a petrol pump"
              loading="lazy">
       </div>
@@ -1501,7 +1501,7 @@ canvas {{ max-width: 100%; }}
             Contact · <span id="site-contact">smaillard75 [at] gmail [dot] com</span>
           </div>
         </div>
-        <img class="about-site-photo" src="/seb-dog-drive.jpg"
+        <img class="about-site-photo" src="seb-dog-drive.jpg"
              alt="Dog looking out of a car window during a drive in Portugal"
              loading="lazy">
       </div>
@@ -3119,7 +3119,7 @@ function buildSensitivity() {{
 WEBPAGE_NAME  = "oil_dashboard"
 GHPAGES_REPO  = Path(__file__).resolve().parent.parent / "sebast759.github.io"
 GHPAGES_REMOTE = "https://github.com/sebast759/sebast759.github.io.git"
-DEFAULT_OUT   = str(Path(__file__).resolve().parent / "index.html")
+DEFAULT_OUT   = str(Path(__file__).resolve().parent / "site" / "index.html")
 
 
 def push_to_github_pages(html: str, token: str):
@@ -3221,7 +3221,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python generate_oil_dashboard.py                  # refresh data and create ./index.html
+  python generate_oil_dashboard.py                  # refresh data and create ./site/index.html
   python generate_oil_dashboard.py --download       # force re-download from EC website
   python generate_oil_dashboard.py my_file.xlsx     # use a specific local file
   python generate_oil_dashboard.py --local          # skip all network calls, use cache
