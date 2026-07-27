@@ -1840,6 +1840,9 @@ function pumpHistoryWithForecast(country) {{
 }}
 
 function sharedPumpAxisBounds(start) {{
+  // One shared vertical grid: Brent / 50 is its pump-price equivalent.
+  // This makes $100/bbl and €2.00/L occupy exactly the same pixel row,
+  // with every $10 Brent interval aligned to a €0.20/L pump interval.
   const values = [];
   for (const country of CTRS) {{
     for (const fuel of ['diesel', 'euro95']) {{
@@ -1850,13 +1853,28 @@ function sharedPumpAxisBounds(start) {{
       if (forecast != null) values.push(forecast);
     }}
   }}
+  const startDate = DATA.dates[start];
+  DATA.brent_daily_dates.forEach((date, index) => {{
+    const value = DATA.brent_daily[index];
+    if (date >= startDate && value != null) values.push(value / 50);
+  }});
+  if (DATA.brent_latest?.price != null)
+    values.push(DATA.brent_latest.price / 50);
   if (!values.length) return null;
   const low = Math.min(...values);
   const high = Math.max(...values);
-  const padding = Math.max(0.03, (high - low) * 0.08);
+  // A small buffer is enough because bounds are then rounded outward to a
+  // full €0.20 / $10 grid interval. The epsilon prevents binary floating
+  // point noise from adding an unnecessary extra interval.
+  const padding = Math.max(0.02, (high - low) * 0.01);
+  const epsilon = 1e-9;
+  const min = Math.floor((low - padding + epsilon) / 0.20) * 0.20;
+  const max = Math.ceil((high + padding - epsilon) / 0.20) * 0.20;
   return {{
-    min: Math.floor((low - padding) / 0.05) * 0.05,
-    max: Math.ceil((high + padding) / 0.05) * 0.05
+    min,
+    max,
+    brentMin: min * 50,
+    brentMax: max * 50
   }};
 }}
 
@@ -2104,13 +2122,27 @@ function buildHistChart() {{
         }},
         y: {{
           position: 'right',
-          ticks: {{ color: '#e2e8f0', callback: v => `€${{v.toFixed(2)}}`, font: {{ size: 13, weight: '600' }} }},
+          min: 1.20,
+          max: 2.80,
+          ticks: {{
+            stepSize: 0.20,
+            color: '#e2e8f0',
+            callback: v => `€${{v.toFixed(2)}}`,
+            font: {{ size: 13, weight: '600' }}
+          }},
           grid: {{ color: CHART_GRID }},
           title: {{ display: true, text: 'Pump price (€/L)', color: '#e2e8f0', font: {{ size: 13, weight: '600' }} }},
         }},
         y2: {{
           position: 'left',
-          ticks: {{ color: '#d4c98acc', callback: v => `$${{v.toFixed(0)}}`, font: {{ size: 13, weight: '600' }} }},
+          min: 60,
+          max: 140,
+          ticks: {{
+            stepSize: 10,
+            color: '#d4c98acc',
+            callback: v => `$${{v.toFixed(0)}}`,
+            font: {{ size: 13, weight: '600' }}
+          }},
           grid: {{ display: false }},
           title: {{ display: true, text: 'Brent ($/bbl)', color: '#d4c98acc', font: {{ size: 13, weight: '600' }} }},
         }}
@@ -2256,6 +2288,8 @@ function updateHistChart() {{
   if (pumpBounds) {{
     histChart.options.scales.y.min = pumpBounds.min;
     histChart.options.scales.y.max = pumpBounds.max;
+    histChart.options.scales.y2.min = pumpBounds.brentMin;
+    histChart.options.scales.y2.max = pumpBounds.brentMax;
   }}
   histChart.update();
 }}

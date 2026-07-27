@@ -13,7 +13,8 @@ The single command above:
     1. Runs the built in regression checks.
     2. Loads weekly EC diesel and Euro 95 prices.
     3. Loads the cached continuous daily Brent series.
-    4. Compares the latest print with 3, 5 and 7 trading day means.
+    4. Compares the latest print, a 50/50 latest and 3 day blend, and
+       3, 5 and 7 trading day means.
     5. Fits rising and falling directional OLS sensitivities.
     6. Evaluates every method on a chronological holdout period.
     7. Produces console tables, CSV tables, charts and a standalone HTML report.
@@ -87,22 +88,30 @@ def aggregate_weekly_brent(
         daily: Daily trading observations with a DatetimeIndex.
         weekly_dates: EC weekly observation dates.
         observations: Number of latest trading observations to average.
-            ``1`` reproduces the dashboard's latest-print method.
+            ``1`` reproduces the dashboard's latest-print method. ``0`` is
+            the 50/50 blend of the latest print and trailing 3 day mean.
     """
-    if observations < 1:
-        raise ValueError("observations must be at least 1")
+    if observations < 0:
+        raise ValueError("observations cannot be negative")
     series = daily.dropna().sort_index()
     if series.empty:
         raise ValueError("daily Brent series is empty")
 
+    trailing_observations = 3 if observations == 0 else observations
     values: list[float] = []
     index: list[pd.Timestamp] = []
     for raw_date in weekly_dates:
         weekly_date = pd.Timestamp(raw_date).normalize()
-        history = series.loc[:weekly_date].tail(observations)
-        values.append(float(history.mean()) if len(history) == observations else math.nan)
+        history = series.loc[:weekly_date].tail(trailing_observations)
+        if len(history) != trailing_observations:
+            value = math.nan
+        elif observations == 0:
+            value = 0.5 * float(history.iloc[-1]) + 0.5 * float(history.mean())
+        else:
+            value = float(history.mean())
+        values.append(value)
         index.append(weekly_date)
-    return pd.Series(values, index=index, name=f"Brent mean {observations}")
+    return pd.Series(values, index=index, name=method_name(observations))
 
 
 def build_change_samples(
@@ -207,6 +216,11 @@ def run_regression_checks() -> None:
         raise RuntimeError(
             "Regression check failed: trailing mean used a future observation"
         )
+    blended = aggregate_weekly_brent(daily, ["2026-01-05"], 0)
+    if not math.isclose(float(blended.iloc[0]), 73.0):
+        raise RuntimeError(
+            "Regression check failed: 50/50 Brent blend calculation changed"
+        )
 
     dates = pd.date_range("2025-01-01", periods=20, freq="W-MON")
     changes = [float(value) for value in range(-10, 10)]
@@ -288,9 +302,7 @@ def run_backtest(
 def print_report(results: pd.DataFrame) -> None:
     """Print detailed results and a cross-fuel ranking."""
     display = results.copy()
-    display["method"] = display["observations"].map(
-        lambda value: "latest print" if value == 1 else f"{value} day mean"
-    )
+    display["method"] = display["observations"].map(method_name)
     display["direction_accuracy"] *= 100
     columns = [
         "method",
@@ -325,9 +337,7 @@ def print_report(results: pd.DataFrame) -> None:
         )
         .sort_values(["mean_mae_cents", "mean_rmse_cents"])
     )
-    ranking["method"] = ranking["observations"].map(
-        lambda value: "latest print" if value == 1 else f"{value} day mean"
-    )
+    ranking["method"] = ranking["observations"].map(method_name)
     ranking["mean_direction_accuracy"] *= 100
     print("\nCross-fuel ranking")
     print(
@@ -351,6 +361,8 @@ def print_report(results: pd.DataFrame) -> None:
 
 def method_name(observations: int) -> str:
     """Return a concise display name for an aggregation window."""
+    if observations == 0:
+        return "50/50 latest + 3 day"
     return "Latest print" if observations == 1 else f"{observations} day mean"
 
 
@@ -406,7 +418,13 @@ def plot_direction_accuracy(results: pd.DataFrame) -> str:
     labels = [method_name(value) for value in summary["observations"]]
     values = summary["direction_accuracy"] * 100
     figure, axis = plt.subplots(figsize=(9, 4.8))
-    bars = axis.bar(labels, values, color=["#2563eb", "#0f766e", "#d97706", "#7c3aed"][:len(labels)])
+    bars = axis.bar(
+        labels,
+        values,
+        color=["#2563eb", "#0f766e", "#0891b2", "#d97706", "#7c3aed"][
+            : len(labels)
+        ],
+    )
     axis.set_ylabel("Correct direction, %")
     axis.set_title("Direction accuracy on the chronological holdout")
     axis.set_ylim(max(0, float(values.min()) - 8), min(100, float(values.max()) + 6))
@@ -702,8 +720,11 @@ def parse_args() -> argparse.Namespace:
         "--windows",
         nargs="+",
         type=int,
-        default=[1, 3, 5, 7],
-        help="Trading-observation counts to compare",
+        default=[1, 3, 0, 5, 7],
+        help=(
+            "Trading-observation counts to compare; 0 means the 50/50 blend "
+            "of latest print and 3 day mean"
+        ),
     )
     parser.add_argument(
         "--train-fraction",
@@ -748,7 +769,7 @@ def main() -> None:
         results, sensitivity, weekly_series = run_backtest(
             args.xlsx,
             args.cache_dir,
-            sorted(set(args.windows)),
+            list(dict.fromkeys(args.windows)),
             args.train_fraction,
         )
     except (FileNotFoundError, ValueError, OSError) as exc:
