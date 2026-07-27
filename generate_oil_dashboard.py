@@ -1108,14 +1108,16 @@ canvas {{ max-width: 100%; }}
   border: 1px solid var(--border); border-radius: 12px;
 }}
 .about-hero-layout {{
-  display:grid; grid-template-columns:minmax(0,1fr) 320px;
+  display:grid; grid-template-columns:340px minmax(0,1fr);
   gap:26px; align-items:center;
 }}
+.about-hero-copy {{ grid-column:2; grid-row:1; }}
 .about-hero h2 {{ color:#f8fafc; font-size:24px; margin-bottom:10px; }}
 .about-hero p {{ color:#cbd5e1; font-size:11pt; line-height:1.7; max-width:820px; }}
 .about-hero-image {{
   display:block; width:100%; aspect-ratio:4/3; object-fit:cover;
   border-radius:10px; border:1px solid var(--border);
+  grid-column:1; grid-row:1;
 }}
 .about-grid {{
   display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:20px;
@@ -1175,7 +1177,11 @@ canvas {{ max-width: 100%; }}
   .content {{ padding: 16px; }}
   .header {{ padding: 16px 16px 0; }}
   .about-hero-layout {{ grid-template-columns:1fr; }}
-  .about-hero-image {{ width:min(100%,520px); margin:0 auto; }}
+  .about-hero-copy {{ grid-column:auto; grid-row:auto; }}
+  .about-hero-image {{
+    width:min(100%,520px); margin:0 auto;
+    grid-column:auto; grid-row:auto;
+  }}
   .about-site-layout {{ grid-template-columns:1fr; }}
   .about-site-photo {{ width:min(100%,360px); margin:0 auto; }}
 }}
@@ -1453,7 +1459,7 @@ canvas {{ max-width: 100%; }}
   <div class="panel" id="tab5">
     <div class="about-hero">
       <div class="about-hero-layout">
-        <div>
+        <div class="about-hero-copy">
           <h2>Fuel Forecast: should you refuel now or wait a week?</h2>
           <p>
             Crude moves first, pump prices follow with a lag of about a week.
