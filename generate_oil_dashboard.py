@@ -985,21 +985,13 @@ tr:nth-child(even) {{ background: rgba(33,43,66,.48); }}
   margin-top:30px; padding-top:28px;
   border-top:1px solid rgba(148,163,184,.22);
 }}
-.chart-controls {{
-  width:max-content; max-width:100%; margin:0 auto;
-  padding:13px 18px 12px; border-radius:10px;
-  background:var(--bg-card); border:1px solid var(--border);
+.chart-toolbar {{
+  display:flex; flex-wrap:wrap; justify-content:center; align-items:center;
+  gap:10px 14px; padding:16px 16px 0;
 }}
-.chart-controls-title {{
-  color:#64748b; font-size:9px; font-weight:800;
-  letter-spacing:.12em; text-align:center; margin-bottom:9px;
-}}
-.chart-control-row {{
-  display:grid; grid-template-columns:72px auto;
-  gap:10px; align-items:center; margin-top:8px;
-}}
-.chart-control-label {{
-  color:#94a3b8; font-size:10px; font-weight:700; text-align:right;
+.chart-toolbar .toggle-row {{ flex-wrap:wrap; justify-content:center; }}
+.chart-toolbar-divider {{
+  width:1px; height:20px; background:var(--border);
 }}
 /* TAX bars */
 .tax-bar-row {{
@@ -1086,9 +1078,7 @@ button.history-legend-item {{ cursor: pointer; transition: opacity .15s, color .
 @media (max-width: 700px) {{
   .refuel-illustration {{ width:160px; height:110px; left:4px; opacity:.25; }}
   .refuel-copy {{ padding: 2px 12px; position: relative; }}
-  .chart-controls {{ width:100%; }}
-  .chart-control-row {{ grid-template-columns:1fr; justify-items:center; }}
-  .chart-control-label {{ text-align:center; }}
+  .chart-toolbar-divider {{ display:none; }}
 }}
 canvas {{ max-width: 100%; }}
 /* Info box */
@@ -1100,7 +1090,7 @@ canvas {{ max-width: 100%; }}
 .section-title {{
   font-size: 16px; font-weight: 700; color: #e2e8f0; margin-bottom: 4px;
 }}
-.section-sub {{ font-size: 12px; color: #94a3b8; margin-bottom: 20px; }}
+.section-sub {{ font-size: 12px; color: #94a3b8; margin-bottom: 5px; }}
 /* About & sources */
 .about-hero {{
   padding: 28px; margin-bottom: 20px;
@@ -1243,33 +1233,26 @@ canvas {{ max-width: 100%; }}
       </div>
       <div class="history-section">
         <div class="section-title" style="text-align:center;">How have pump prices changed?</div>
-        <div class="section-sub" style="text-align:center;margin-bottom:14px;">Weekly consumer pump prices inclusive of taxes and duties</div>
-        <div class="chart-controls">
-          <div class="chart-controls-title">CHART OPTIONS</div>
-          <div class="chart-control-row">
-            <div class="chart-control-label">Fuel shown</div>
-            <div class="toggle-row" aria-label="Fuel shown on the chart">
-              <button class="toggle-btn" id="btn95" onclick="switchFuel('euro95')">Euro-95</button>
-              <button class="toggle-btn active" id="btnD" onclick="switchFuel('diesel')">Diesel</button>
-            </div>
-          </div>
-          <div class="chart-control-row">
-            <div class="chart-control-label">Time range</div>
-            <div class="toggle-row" aria-label="Time range shown on the chart">
-              <button class="toggle-btn active" id="btnYTD" onclick="setRange(DATA.ytd_weeks)">YTD</button>
-              <button class="toggle-btn" id="btn1Y" onclick="setRange(52)">1Y</button>
-              <button class="toggle-btn" id="btn3Y" onclick="setRange(156)">3Y</button>
-              <button class="toggle-btn" id="btn5Y" onclick="setRange(260)">5Y</button>
-              <button class="toggle-btn" id="btnAll" onclick="setRange(0)">ALL</button>
-            </div>
-          </div>
-        </div>
         <div style="display:flex;flex-direction:column;align-items:center;">
-          <div class="section-sub" id="history-status" style="margin-top:10px;"></div>
+          <div class="section-sub" id="history-status" style="margin-top:8px;"></div>
         </div>
       </div>
     </div>
     <div class="card">
+      <div class="chart-toolbar">
+        <div class="toggle-row" aria-label="Fuel shown on the chart">
+          <button class="toggle-btn" id="btn95" onclick="switchFuel('euro95')">Euro-95</button>
+          <button class="toggle-btn active" id="btnD" onclick="switchFuel('diesel')">Diesel</button>
+        </div>
+        <div class="chart-toolbar-divider" aria-hidden="true"></div>
+        <div class="toggle-row" aria-label="Time range shown on the chart">
+          <button class="toggle-btn active" id="btnYTD" onclick="setRange(DATA.ytd_weeks)">YTD</button>
+          <button class="toggle-btn" id="btn1Y" onclick="setRange(52)">1Y</button>
+          <button class="toggle-btn" id="btn3Y" onclick="setRange(156)">3Y</button>
+          <button class="toggle-btn" id="btn5Y" onclick="setRange(260)">5Y</button>
+          <button class="toggle-btn" id="btnAll" onclick="setRange(0)">ALL</button>
+        </div>
+      </div>
       <div class="history-legend" id="history-legend"></div>
       <div class="chart-wrap" style="height:500px;">
         <canvas id="histChart"></canvas>
@@ -2339,7 +2322,7 @@ function buildPriceChart() {{
     }},
     options: {{
       responsive: true, maintainAspectRatio: false, devicePixelRatio: window.devicePixelRatio,
-      layout: {{ padding: {{ top: 34 }} }},
+      layout: {{ padding: {{ top: 52 }} }},
       plugins: {{
         legend: {{ display: false }},
         tooltip: {{
@@ -2366,7 +2349,7 @@ function buildPriceChart() {{
         }},
       }},
       scales: {{
-        x: {{ ticks: {{ color: '#e2e8f0', font: {{ size: 12, weight: 700 }} }}, grid: {{ color: CHART_GRID }} }},
+        x: {{ ticks: {{ display: false }}, grid: {{ color: CHART_GRID }} }},
         y: {{
           min: 1.30,
           grace: '10%',
@@ -2383,6 +2366,19 @@ function buildPriceChart() {{
         const fuelLabels = ['Diesel', '95'];
         const brentMove = latestBrentMove();
         const direction = brentMove == null ? null : (brentMove >= 0 ? '▲' : '▼');
+        const dieselMeta = chart.getDatasetMeta(0);
+        const euro95Meta = chart.getDatasetMeta(1);
+        chart.data.labels.forEach((country, j) => {{
+          const barD = dieselMeta.data[j], bar95 = euro95Meta.data[j];
+          if (!barD || !bar95) return;
+          ctx2.save();
+          ctx2.textAlign = 'center';
+          ctx2.textBaseline = 'bottom';
+          ctx2.font = 'bold 13px DM Sans, sans-serif';
+          ctx2.fillStyle = COLORS[country];
+          ctx2.fillText(country, (barD.x + bar95.x) / 2, chart.chartArea.top - 36);
+          ctx2.restore();
+        }});
         chart.data.datasets.forEach((ds, i) => {{
           chart.getDatasetMeta(i).data.forEach((bar, j) => {{
             const val = ds.data[j];
