@@ -12,7 +12,6 @@ HTML dashboard with:
 Usage:
     python generate_oil_dashboard.py                     # refresh data and create site/index.html
     python generate_oil_dashboard.py --local             # site/index.html using cached data
-    python generate_oil_dashboard.py --push              # generate and publish to GitHub Pages
     python generate_oil_dashboard.py path/to/file.xlsx   # use a specific Excel file
     python generate_oil_dashboard.py --local --output my.html
                                                         # custom local output file
@@ -27,7 +26,6 @@ import json
 import math
 import base64
 import argparse
-import tempfile
 import shutil
 import re
 import html as html_lib
@@ -3146,103 +3144,7 @@ function buildSensitivity() {{
 # ---------------------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------------------
-WEBPAGE_NAME  = "oil_dashboard"
-GHPAGES_REPO  = Path(__file__).resolve().parent.parent / "sebast759.github.io"
-GHPAGES_REMOTE = "https://github.com/sebast759/sebast759.github.io.git"
 DEFAULT_OUT   = str(Path(__file__).resolve().parent / "site" / "index.html")
-
-
-def push_to_github_pages(html: str, token: str):
-    """Push HTML directly to GitHub Pages via the GitHub Contents API.
-
-    No local git repo required — works on Heroku's ephemeral filesystem.
-
-    Env vars (all optional except GITHUB_TOKEN):
-      GITHUB_TOKEN     — personal access token with repo write scope
-      GITHUB_REPO      — owner/repo  (default: sebast759/sebast759.github.io)
-      GITHUB_FILE_PATH — path in repo (default: oil_dashboard/index.html)
-    """
-    import urllib.request
-    import urllib.error
-
-    repo      = os.environ.get("GITHUB_REPO",      "sebast759/sebast759.github.io")
-    file_path = os.environ.get("GITHUB_FILE_PATH", "oil_dashboard/index.html")
-    api_url   = f"https://api.github.com/repos/{repo}/contents/{file_path}"
-    headers   = {
-        "Authorization": f"token {token}",
-        "Accept":        "application/vnd.github.v3+json",
-        "Content-Type":  "application/json",
-        "User-Agent":    "oil-dashboard-scheduler",
-    }
-
-    # Fetch current file SHA — required by the API for updates (not for first push)
-    sha = None
-    try:
-        with urllib.request.urlopen(
-            urllib.request.Request(api_url, headers=headers)
-        ) as resp:
-            sha = json.loads(resp.read())["sha"]
-    except urllib.error.HTTPError as e:
-        if e.code != 404:
-            raise
-
-    payload = {
-        "message": f"chore: update oil dashboard ({datetime.now().strftime('%Y-%m-%d %H:%M')})",
-        "content": base64.b64encode(html.encode()).decode(),
-    }
-    if sha:
-        payload["sha"] = sha
-
-    req = urllib.request.Request(
-        api_url,
-        data=json.dumps(payload).encode(),
-        headers=headers,
-        method="PUT",
-    )
-    with urllib.request.urlopen(req):
-        pass
-
-    owner = repo.split("/")[0]
-    print(f"  Live at https://{owner}.github.io/{file_path.split('/')[0]}/")
-
-
-def git_push(ghpages_repo: Path, webpage_name: str, source_file: Path):
-    """Publish through a clean temporary checkout, preserving local Pages edits."""
-    import subprocess
-    print("\nPushing to GitHub Pages ...")
-    generated_html = source_file.read_bytes()
-
-    with tempfile.TemporaryDirectory(prefix="oil-dashboard-pages-") as tmp:
-        clean_repo = Path(tmp) / "website"
-        subprocess.run(
-            ["git", "clone", "--quiet", "--single-branch",
-             GHPAGES_REMOTE, str(clean_repo)],
-            check=True,
-        )
-
-        target_file = clean_repo / webpage_name / "index.html"
-        target_file.parent.mkdir(parents=True, exist_ok=True)
-        target_file.write_bytes(generated_html)
-
-        subprocess.run(["git", "config", "user.name", "Dashboard Bot"],
-                       cwd=clean_repo, check=True)
-        subprocess.run(["git", "config", "user.email", "actions@github.com"],
-                       cwd=clean_repo, check=True)
-        subprocess.run(["git", "add", f"{webpage_name}/index.html"],
-                       cwd=clean_repo, check=True)
-        result = subprocess.run(["git", "diff", "--cached", "--quiet"],
-                                cwd=clean_repo)
-        if result.returncode == 0:
-            print("  Dashboard is already up to date.")
-            return
-
-        subprocess.run(
-            ["git", "commit", "-m", f"Update {webpage_name} dashboard"],
-            cwd=clean_repo, check=True,
-        )
-        subprocess.run(["git", "push"], cwd=clean_repo, check=True)
-
-    print(f"  Live at https://sebast759.github.io/{webpage_name}/")
 
 
 def main():
@@ -3255,7 +3157,9 @@ Examples:
   python generate_oil_dashboard.py --download       # force re-download from EC website
   python generate_oil_dashboard.py my_file.xlsx     # use a specific local file
   python generate_oil_dashboard.py --local          # skip all network calls, use cache
-  python generate_oil_dashboard.py --push           # generate and publish to GitHub Pages
+
+Publishing is handled by .github/workflows/update_dashboard.yml, which deploys
+site/ to GitHub Pages (fuelforecast.eu) on every push to main and daily.
 
 Output (default):
   """ + DEFAULT_OUT
@@ -3269,16 +3173,16 @@ Output (default):
     parser.add_argument("--cache-dir", default=".",
                         help="Directory for cached xlsx (default: current folder)")
     parser.add_argument("--push", action="store_true",
-                        help="Publish after generating (default: local file only)")
-    parser.add_argument("--no-push", action="store_true",
                         help=argparse.SUPPRESS)
     parser.add_argument("--local", action="store_true",
                         help="Skip all network calls; use cached xlsx and brent_cache.csv")
     args = parser.parse_args()
-    if args.push and args.no_push:
-        parser.error("--push and --no-push cannot be used together")
-    if args.push and args.local:
-        parser.error("--push cannot be combined with --local")
+    if args.push:
+        parser.error(
+            "--push has been removed: publishing to sebast759.github.io is retired. "
+            "The site deploys to fuelforecast.eu via .github/workflows/update_dashboard.yml "
+            "on every push to main (and daily)."
+        )
 
     xlsx_path = resolve_xlsx(args.input, args.download, Path(args.cache_dir), local=args.local)
 
@@ -3290,19 +3194,6 @@ Output (default):
     out_path.write_text(html, encoding="utf-8")
     emit_site_support_files(out_path.parent)
     print(f"\n  Dashboard saved to: {out_path.resolve()}")
-
-    if args.push:
-        github_token = os.environ.get("PAGES_TOKEN")
-        if github_token:
-            print("\nPushing to GitHub Pages via API ...")
-            push_to_github_pages(html, github_token)
-        elif GHPAGES_REPO.exists():
-            git_push(GHPAGES_REPO, WEBPAGE_NAME, out_path)
-        else:
-            parser.error(
-                f"cannot push: Pages repo not found at {GHPAGES_REPO} "
-                "and PAGES_TOKEN is not set"
-            )
 
 
 if __name__ == "__main__":
