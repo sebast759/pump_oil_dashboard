@@ -1047,9 +1047,30 @@ button.history-legend-item {{ cursor: pointer; transition: opacity .15s, color .
   width:280px; height:180px; object-fit:contain; opacity:.92;
 }}
 .refuel-copy {{ padding:2px 150px 2px 150px; }}
+.decision-kicker {{
+  color:#8fa3bd; font-size:11px; font-weight:750; letter-spacing:.08em;
+  text-transform:uppercase; margin-bottom:8px;
+}}
+.decision-fuel-toggle {{
+  display:inline-flex; padding:3px; margin:0 auto 14px; border-radius:999px;
+  background:#111a2c; border:1px solid #334155;
+}}
+.decision-fuel-btn {{
+  border:0; border-radius:999px; padding:6px 14px; background:transparent;
+  color:#91a4bd; font:650 12px 'Inter','DM Sans',sans-serif; cursor:pointer;
+}}
+.decision-fuel-btn.active {{ background:#34435e; color:#fff; }}
+.refuel-freshness {{
+  display:flex; justify-content:center; align-items:center; flex-wrap:wrap;
+  gap:6px 16px; margin:0 auto 12px; color:#aebdd1;
+  font-size:11px; line-height:1.35;
+}}
+.refuel-freshness-item {{ white-space:nowrap; }}
+.refuel-freshness-label {{ color:#7184a0; font-weight:600; }}
+.refuel-freshness-value {{ color:#dbe5f3; font-weight:650; }}
 .refuel-question {{
-  color:#f8fafc; font-size:19px; font-weight:600;
-  letter-spacing:-.015em; margin-bottom:9px;
+  color:#dbe5f3; font-size:15px; font-weight:550;
+  letter-spacing:-.01em; margin-bottom:7px;
 }}
 .refuel-answer {{
   font-weight:800; line-height:1.12; letter-spacing:-.025em;
@@ -1057,7 +1078,7 @@ button.history-legend-item {{ cursor: pointer; transition: opacity .15s, color .
 }}
 .refuel-action, .refuel-detail {{ display: block; }}
 .refuel-detail {{
-  color:#dbe5f3; font-size:17px; font-weight:500;
+  color:#dbe5f3; font-size:16px; font-weight:500;
   line-height:1.4; margin-top:7px; letter-spacing:-.01em;
 }}
 .refuel-context {{
@@ -1073,9 +1094,12 @@ button.history-legend-item {{ cursor: pointer; transition: opacity .15s, color .
 }}
 .market-line {{ margin-top:13px; color:#cbd5e1; font-weight:350; }}
 .market-line strong {{ color:#f8fafc; font-weight:500; }}
+.why-line {{ margin-top:11px; color:#9fb0c6; }}
 @media (max-width: 700px) {{
   .refuel-illustration {{ width:160px; height:110px; left:4px; opacity:.25; }}
   .refuel-copy {{ padding: 2px 12px; position: relative; }}
+  .refuel-freshness {{ gap:5px 12px; }}
+  .refuel-freshness-item {{ white-space:normal; }}
   .chart-toolbar-divider {{ display:none; }}
 }}
 canvas {{ max-width: 100%; }}
@@ -1187,7 +1211,7 @@ canvas {{ max-width: 100%; }}
         </div>
         <div>
           <h1>Fuel Forecast</h1>
-          <div class="subtitle">Petrol and diesel prices in Europe · Should you fill up now or wait?</div>
+          <div class="subtitle">Know the best day to fill up this week.</div>
           <button type="button" onclick="showTab(5)"
                   style="margin-top:5px;padding:0;border:0;background:none;color:#f59e0b;font:600 11px 'Inter','DM Sans',sans-serif;cursor:pointer;">
             About &amp; data sources →
@@ -1200,17 +1224,17 @@ canvas {{ max-width: 100%; }}
         <div id="badge-date-label" style="font-size:11px;color:#94a3b8;white-space:nowrap;line-height:1.4;"></div>
         <div class="price-badges" id="price-badges"></div>
       </div>
-      <div id="brent-info"  style="font-size:10px;color:#94a3b8;margin-top:6px;"></div>
-      <div id="brent-info2" style="font-size:10px;color:#94a3b8;margin-top:2px;"></div>
+      <div id="brent-info"  style="display:none;"></div>
+      <div id="brent-info2" style="display:none;"></div>
     </div>
   </div>
   <div class="tabs">
-    <button class="tab-btn active" onclick="showTab(0)">Prices &amp; Forecast</button>
-    <button class="tab-btn" onclick="showTab(1)" id="ytd-tab-label">2026 Variation</button>
-    <button class="tab-btn" onclick="showTab(2)">How Much Tax in 1 Litre?</button>
-    <button class="tab-btn" onclick="showTab(3)">Consumption Mix: Diesel or SP95?</button>
-    <button class="tab-btn" onclick="showTab(4)">Sensitivity to Brent Price</button>
-    <button class="tab-btn" onclick="showTab(5)">About &amp; Sources</button>
+    <button class="tab-btn active" onclick="showTab(0)">When to fill up</button>
+    <button class="tab-btn" onclick="showTab(1)" id="ytd-tab-label">Price changes</button>
+    <button class="tab-btn" onclick="showTab(2)">Fuel tax</button>
+    <button class="tab-btn" onclick="showTab(3)">Petrol vs diesel</button>
+    <button class="tab-btn" onclick="showTab(4)">How the forecast works</button>
+    <button class="tab-btn" onclick="showTab(5)">About</button>
   </div>
 </div>
 
@@ -1224,13 +1248,19 @@ canvas {{ max-width: 100%; }}
              src="data:image/png;base64,{refuel_illustration}"
              alt="" aria-hidden="true">
         <div class="refuel-copy">
-          <div class="refuel-question">Should I refuel my car today?</div>
+          <div class="decision-kicker">Your weekly fuel plan</div>
+          <div class="decision-fuel-toggle" aria-label="Choose fuel type">
+            <button type="button" class="decision-fuel-btn" id="decision-petrol" onclick="switchFuel('euro95')">Petrol</button>
+            <button type="button" class="decision-fuel-btn active" id="decision-diesel" onclick="switchFuel('diesel')">Diesel</button>
+          </div>
+          <div class="refuel-freshness" id="refuel-freshness" aria-label="Data dates"></div>
+          <div class="refuel-question" id="refuel-question">When should I fill up?</div>
           <div class="refuel-answer" id="refuel-answer"></div>
           <div class="refuel-context" id="refuel-context"></div>
         </div>
       </div>
       <div class="history-section">
-        <div class="section-title" style="text-align:center;">How have pump prices changed?</div>
+        <div class="section-title" style="text-align:center;">Want to see the price trend?</div>
         <div style="display:flex;flex-direction:column;align-items:center;">
           <div class="section-sub" id="history-status" style="margin-top:8px;"></div>
         </div>
@@ -1595,6 +1625,7 @@ document.addEventListener('DOMContentLoaded', () => {{
   $('table-date').textContent  = latest;
   $('history-status').textContent =
     `Observed through ${{fmtDateLabel(latest)}} · Indicative forecast ${{DATA.chart_labels_full[DATA.dates.length]}}`;
+  buildRefuelFreshness();
   updateRefuelCallout();
 
   buildBadges();
@@ -1625,6 +1656,37 @@ function showTab(n) {{
 function fmtDateLabel(iso) {{
   const d = new Date(iso + 'T12:00:00Z');
   return d.toLocaleDateString('en-GB', {{ day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' }});
+}}
+
+function fmtDateShort(iso) {{
+  if (!iso) return 'unavailable';
+  const d = new Date(iso + 'T12:00:00Z');
+  return d.toLocaleDateString('en-GB', {{
+    weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC'
+  }});
+}}
+
+function fmtDayDate(date) {{
+  return date.toLocaleDateString('en-GB', {{
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC'
+  }});
+}}
+
+function buildRefuelFreshness() {{
+  const pumpDate = DATA.latest_date ?? DATA.dates[DATA.dates.length - 1];
+  const brentDate = DATA.brent_latest?.date;
+  const forecastDate = new Date(Date.parse(pumpDate + 'T12:00:00Z') + 7 * 86400000)
+    .toISOString().slice(0, 10);
+  const items = [
+    ['Pump prices published', fmtDateShort(pumpDate)],
+    ['Brent price as of', fmtDateShort(brentDate)],
+    ['Forecast for', fmtDateShort(forecastDate)]
+  ];
+  $('refuel-freshness').innerHTML = items.map(([label, value]) =>
+    `<span class="refuel-freshness-item">` +
+    `<span class="refuel-freshness-label">${{label}}</span> ` +
+    `<span class="refuel-freshness-value">${{value}}</span></span>`
+  ).join('<span aria-hidden="true">·</span>');
 }}
 
 function brentInfoLine(price, date, diffPrice, diffRef, col) {{
@@ -1732,11 +1794,17 @@ function updateRefuelCallout() {{
   const move = latestBrentMove();
   const answer = $('refuel-answer');
   const context = $('refuel-context');
+  const fuelName = currentFuel === 'diesel' ? 'diesel' : 'petrol';
+  const updateDate = new Date(dateX(DATA.latest_date, 7));
+  const deadlineDate = new Date(updateDate.getTime() - DAY_MS);
+  $('refuel-question').textContent = `When should I buy ${{fuelName}}?`;
+  $('decision-petrol').classList.toggle('active', currentFuel === 'euro95');
+  $('decision-diesel').classList.toggle('active', currentFuel === 'diesel');
   if (move == null) {{
-    answer.innerHTML = '<span class="refuel-action">NO SIGNAL</span>';
+    answer.innerHTML = '<span class="refuel-action">CHECK BACK LATER</span>';
     answer.style.fontSize = '22px';
     answer.style.color = '#94a3b8';
-    context.textContent = 'Latest Brent movement is unavailable';
+    context.textContent = 'We do not have enough fresh market data to suggest a day yet.';
     return;
   }}
 
@@ -1747,39 +1815,34 @@ function updateRefuelCallout() {{
   const magnitude = Math.abs(move);
   const strength = Math.max(0, Math.min(1, (magnitude - 3) / 7));
   answer.style.fontSize = `${{(22 + strength * 10).toFixed(1)}}px`;
-  const weeklyBrent = [...DATA.brent].reverse().find(value => value != null);
-  const currentBrent = DATA.brent_latest?.price ?? weeklyBrent;
-  const brentDirection = move >= 0 ? 'up' : 'down';
-  const expectedEuroLabel =
-    `${{expectedCents >= 0 ? '+' : '-'}}€${{Math.abs(expectedCents / 100).toFixed(2)}}/L`;
-  const brentLine =
-    `<span class="refuel-context-line market-line">` +
-    `Brent is ${{brentDirection}} <strong>$${{Math.abs(move).toFixed(1)}} this week</strong> ` +
-    `at <strong>$${{currentBrent.toFixed(0)}}/bbl</strong>. Pump prices will follow next week ` +
-    `(<strong>${{expectedEuroLabel}} expected</strong>).</span>`;
+  const direction = expectedCents >= 0 ? 'rise' : 'fall';
+  const whyLine =
+    `<span class="refuel-context-line why-line">Why? Oil costs moved enough for ${{fuelName}} ` +
+    `prices to ${{direction}} by about <strong>${{cents}} cents per litre</strong>. ` +
+    `This is an estimate, and individual stations may change later.</span>`;
 
   if (Math.abs(expectedCents) < 2) {{
     answer.innerHTML =
-      '<span class="refuel-action">NO RUSH</span>' +
-      '<span class="refuel-detail">Pump prices should stay broadly flat next week</span>';
+      '<span class="refuel-action">GO WHEN CONVENIENT</span>' +
+      '<span class="refuel-detail">Thursday, Friday or Sunday should make little difference</span>';
     answer.style.color = '#94a3b8';
-    context.innerHTML = brentLine;
+    context.innerHTML = whyLine;
   }} else if (expectedCents > 0) {{
     answer.innerHTML =
-      `<span class="refuel-action">GO NOW</span>` +
-      `<span class="refuel-detail">Pump prices could rise ~+${{cents}} cents/L next week</span>`;
+      `<span class="refuel-action">FILL UP BY ${{fmtDayDate(deadlineDate).toUpperCase()}}</span>` +
+      `<span class="refuel-detail">Thursday, Friday or this weekend — before the next expected price update</span>`;
     answer.style.color = '#34d399';
     context.innerHTML =
-      `<span class="refuel-context-line saving-line">That’s €${{tankSaving}} saved on a 50L tank</span>` +
-      brentLine;
+      `<span class="refuel-context-line saving-line">You could avoid about €${{tankSaving}} extra on a 50L fill-up</span>` +
+      whyLine;
   }} else {{
     answer.innerHTML =
-      `<span class="refuel-action">WAIT</span>` +
-      `<span class="refuel-detail">Pump prices could fall ~${{cents}} cents/L next week</span>`;
+      `<span class="refuel-action">WAIT UNTIL ${{fmtDayDate(updateDate).toUpperCase()}}</span>` +
+      `<span class="refuel-detail">If you can, hold off until stations begin reflecting the lower price</span>`;
     answer.style.color = '#f59e0b';
     context.innerHTML =
-      `<span class="refuel-context-line saving-line">Waiting could save about €${{tankSaving}} on a 50L tank</span>` +
-      brentLine;
+      `<span class="refuel-context-line saving-line">Waiting could save about €${{tankSaving}} on a 50L fill-up</span>` +
+      whyLine;
   }}
 }}
 
@@ -2363,7 +2426,6 @@ function buildPriceChart() {{
         const ctx2 = chart.ctx;
         const fuelLabels = ['Diesel', '95'];
         const brentMove = latestBrentMove();
-        const direction = brentMove == null ? null : (brentMove >= 0 ? '▲' : '▼');
         const dieselMeta = chart.getDatasetMeta(0);
         const euro95Meta = chart.getDatasetMeta(1);
         chart.data.labels.forEach((country, j) => {{
@@ -2394,14 +2456,21 @@ function buildPriceChart() {{
             const valueText = `€${{val.toFixed(2)}}`;
             ctx2.fillText(valueText, bar.x, chart.chartArea.top - 4);
 
-            // Prediction direction: a large two-part arrow above the bar.
-            if (direction) {{
+            // Predicted pump-price direction. Moves below 2 cents/L are
+            // deliberately shown as flat, matching the NO RUSH callout.
+            if (brentMove != null) {{
+              const fuelKey = i === 0 ? 'diesel' : 'euro95';
+              const expectedCents = forecastCoefficientForFuel(fuelKey, brentMove) * brentMove * 10;
               const color = Array.isArray(ds.backgroundColor)
                 ? ds.backgroundColor[j] : ds.backgroundColor;
               const x = bar.x;
               ctx2.fillStyle = color;
-              ctx2.beginPath();
-              if (brentMove >= 0) {{
+              if (Math.abs(expectedCents) < 2) {{
+                ctx2.font = 'bold 24px DM Sans, sans-serif';
+                ctx2.textBaseline = 'middle';
+                ctx2.fillText('~', x, bar.y - 13);
+              }} else if (expectedCents > 0) {{
+                ctx2.beginPath();
                 ctx2.moveTo(x, bar.y - 22);
                 ctx2.lineTo(x - 8, bar.y - 11);
                 ctx2.lineTo(x + 8, bar.y - 11);
@@ -2409,6 +2478,7 @@ function buildPriceChart() {{
                 ctx2.fill();
                 ctx2.fillRect(x - 7, bar.y - 7, 14, 4);
               }} else {{
+                ctx2.beginPath();
                 ctx2.fillRect(x - 7, bar.y - 22, 14, 4);
                 ctx2.moveTo(x - 8, bar.y - 14);
                 ctx2.lineTo(x + 8, bar.y - 14);
@@ -2429,7 +2499,7 @@ function buildPriceChart() {{
 function buildYTD() {{
   const yr = DATA.dates[DATA.dates.length-1].slice(0,4);
   $('ytd-year').textContent = yr;
-  $('ytd-tab-label').textContent = `${{yr}} Variation`;
+  $('ytd-tab-label').textContent = `${{yr}} price changes`;
 
   // Cards
   const wrap = $('ytd-cards');
