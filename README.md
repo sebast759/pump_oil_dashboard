@@ -40,6 +40,20 @@ normal GitHub Pages deployment.
 `site/` artifact directly to GitHub Pages. It runs daily at 14:30 UTC, also
 runs Monday at 07:00 UTC, and can be started manually from the Actions tab.
 
+## Weekly email
+
+Visitors can subscribe on the dashboard to a Thursday email that says whether
+to fill up before Monday. Signups go straight to Buttondown through its native
+HTML form (`erireal` account, shared with another site). Each signup from this
+site is tagged `fuelforecast` and carries `metadata__source=fuelforecast`.
+
+`weekly_email.py` builds the email from `.cache/weekly_signal.json` (written by
+the generator, using the same forecast coefficients as the page) and sends it
+through the Buttondown API to subscribers tagged `fuelforecast` only. The
+Thursday 16:30 UTC workflow run sends it, and it needs a `BUTTONDOWN_API_KEY`
+repository secret. To try it without sending, run the workflow manually with
+`email_mode = draft`, or run `python weekly_email.py --dry-run` locally.
+
 ## Brent data
 
 `investing_brent.py` resolves the currently displayed front-month Brent
@@ -89,6 +103,7 @@ python -m unittest discover -s tests -v
 oil_dashboard/
 |-- generate_oil_dashboard.py
 |-- investing_brent.py
+|-- weekly_email.py
 |-- brent_spot.py
 |-- requirements.txt
 |-- assets/

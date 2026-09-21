@@ -8,7 +8,15 @@ on:
     - cron: '30 14 * * *'
     # Every Monday at 07:00 UTC
     - cron: '0 7 * * 1'
+    # Every Thursday at 16:30 UTC: also sends the weekly "fill up before Monday?" email
+    - cron: '30 16 * * 4'
   workflow_dispatch:  # allow manual trigger from the Actions tab
+    inputs:
+      email_mode:
+        description: 'Weekly email: none, draft (create in Buttondown, do not send) or send'
+        type: choice
+        options: [none, draft, send]
+        default: none
 
 permissions:
   contents: read
@@ -62,3 +70,9 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
+      - name: Send weekly email (Thursday schedule or manual)
+        if: github.event.schedule == '30 16 * * 4' || (github.event_name == 'workflow_dispatch' && inputs.email_mode != 'none')
+        run: python weekly_email.py ${{ inputs.email_mode == 'draft' && '--draft' || '' }}
+        env:
+          BUTTONDOWN_API_KEY: ${{ secrets.BUTTONDOWN_API_KEY }}

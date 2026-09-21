@@ -32,6 +32,13 @@ import html as html_lib
 from pathlib import Path
 from datetime import datetime, date, timezone, timedelta
 
+from weekly_email import (
+    FORECAST_COEFFICIENTS,
+    NEWSLETTER_BUTTONDOWN_USERNAME,
+    NEWSLETTER_SOURCE,
+    signal_from_data,
+)
+
 try:
     import openpyxl
 except ImportError:
@@ -649,6 +656,34 @@ def build_html(data: dict) -> str:
         if goatcounter_code else ""
     )
 
+    forecast_coefficients_js = json.dumps(FORECAST_COEFFICIENTS)
+    buttondown_user = (
+        os.environ.get("BUTTONDOWN_USERNAME") or NEWSLETTER_BUTTONDOWN_USERNAME
+    ).strip()
+    if buttondown_user and not re.fullmatch(r"[A-Za-z0-9_-]+", buttondown_user):
+        raise ValueError(
+            "BUTTONDOWN_USERNAME may contain only letters, numbers, hyphens, and underscores"
+        )
+    subscribe_html = (
+        f'''<form class="subscribe-box" method="post" target="popupwindow"
+            action="https://buttondown.com/api/emails/embed-subscribe/{buttondown_user}"
+            onsubmit="window.open('https://buttondown.com/{buttondown_user}', 'popupwindow')">
+        <div class="subscribe-copy">
+          <strong>Get the Thursday email</strong>
+          <span>Know if you need to fill up before Monday. One email a week, unsubscribe anytime.</span>
+        </div>
+        <input type="hidden" name="embed" value="1">
+        <input type="hidden" name="tag" value="{NEWSLETTER_SOURCE}">
+        <input type="hidden" name="metadata__source" value="{NEWSLETTER_SOURCE}">
+        <div class="subscribe-fields">
+          <input type="email" name="email" placeholder="you@example.com"
+                 aria-label="Email address" autocomplete="email" required>
+          <button type="submit">Subscribe</button>
+        </div>
+      </form>'''
+        if buttondown_user else ""
+    )
+
     previous_brent = next(
         (value for value in reversed(data["brent"][:-1]) if value is not None),
         None,
@@ -1021,6 +1056,32 @@ button.history-legend-item {{ cursor: pointer; transition: opacity .15s, color .
   box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
   font-family: 'Inter', 'DM Sans', sans-serif;
 }}
+.subscribe-box {{
+  display:flex; align-items:center; justify-content:center; flex-wrap:wrap;
+  gap:12px 28px; margin:-8px 0 24px; padding:14px 22px; border-radius:12px;
+  background:var(--bg-card); border:1px solid var(--border);
+  font-family:'Inter','DM Sans',sans-serif;
+}}
+.subscribe-copy {{ display:flex; flex-direction:column; gap:3px; text-align:left; }}
+.subscribe-copy strong {{ color:#f8fafc; font-size:14px; font-weight:700; }}
+.subscribe-copy span {{ color:#91a4bd; font-size:12px; }}
+.subscribe-fields {{ display:flex; gap:8px; }}
+.subscribe-fields input {{
+  width:220px; max-width:100%; padding:8px 14px; border-radius:999px;
+  background:#111a2c; border:1px solid #334155; color:#f8fafc;
+  font:500 13px 'Inter','DM Sans',sans-serif;
+}}
+.subscribe-fields input:focus {{ outline:none; border-color:#f59e0b; }}
+.subscribe-fields button {{
+  padding:8px 16px; border:0; border-radius:999px; cursor:pointer;
+  background:#f59e0b; color:#111827; font:700 13px 'Inter','DM Sans',sans-serif;
+}}
+.subscribe-fields button:hover {{ background:#fbbf24; }}
+@media (max-width: 700px) {{
+  .subscribe-copy {{ text-align:center; }}
+  .subscribe-fields {{ width:100%; }}
+  .subscribe-fields input {{ flex:1; min-width:0; width:auto; }}
+}}
 .refuel-illustration {{
   position:absolute; left:20px; top:50%; transform:translateY(-50%);
   width:250px; height:190px; object-fit:contain; opacity:.95; pointer-events:none;
@@ -1262,6 +1323,7 @@ canvas {{ max-width: 100%; }}
           <div class="refuel-freshness" id="refuel-freshness" aria-label="Data dates"></div>
         </div>
       </div>
+      {subscribe_html}
       <div class="history-section">
         <div class="section-title" style="text-align:center;">Want to see the price trend?</div>
         <div style="display:flex;flex-direction:column;align-items:center;">
@@ -1833,10 +1895,12 @@ function displayedBrentSeries(startDate=DATA.dates[0]) {{
     .filter(point => point.y != null && point.sourceDate >= startDate);
 }}
 
+// Shared with weekly_email.py so the Thursday email matches this page.
+const FORECAST_COEFFICIENTS = {forecast_coefficients_js};
+
 function forecastCoefficientForFuel(fuel, brentMove) {{
-  if (fuel === 'diesel')
-    return brentMove >= 0 ? 0.09 : 0.06;
-  return brentMove >= 0 ? 0.07 : 0.05;
+  const [rising, falling] = FORECAST_COEFFICIENTS[fuel] ?? FORECAST_COEFFICIENTS.euro95;
+  return brentMove >= 0 ? rising : falling;
 }}
 
 function forecastCoefficient(brentMove) {{
@@ -3491,6 +3555,9 @@ Output (default):
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(html, encoding="utf-8")
     emit_site_support_files(out_path.parent)
+    signal_path = Path(".cache") / "weekly_signal.json"
+    signal_path.parent.mkdir(parents=True, exist_ok=True)
+    signal_path.write_text(json.dumps(signal_from_data(data)), encoding="utf-8")
     print(f"\n  Dashboard saved to: {out_path.resolve()}")
 
 
