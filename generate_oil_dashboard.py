@@ -1976,7 +1976,7 @@ function sharedPumpAxisBounds(start) {{
   // A small buffer is enough because bounds are then rounded outward to a
   // full €0.20 / $10 grid interval. The epsilon prevents binary floating
   // point noise from adding an unnecessary extra interval.
-  const padding = Math.max(0.02, (high - low) * 0.01);
+  const padding = Math.max(0.01, (high - low) * 0.005);
   const epsilon = 1e-9;
   const min = Math.floor((low - padding + epsilon) / 0.20) * 0.20;
   const max = Math.ceil((high + padding - epsilon) / 0.20) * 0.20;
