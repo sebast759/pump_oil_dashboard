@@ -42,14 +42,22 @@ runs Monday at 07:00 UTC, and can be started manually from the Actions tab.
 
 ## Brent data
 
-`brent_spot.py` creates a continuous daily series from:
+`investing_brent.py` resolves the currently displayed front-month Brent
+instrument from Investing.com and downloads its unadjusted OHLC history from
+the site's chart-data endpoint. Online dashboard builds refresh the recent
+tail; if a settled close from the seven-day overlap changed, the complete
+history is downloaded again. Data are cached under `.cache/brent/`.
 
-* official Brent spot observations from FRED `DCOILBRENTEU`
-* adjusted Yahoo Finance `BZ=F` observations for missing and newer dates
+The scraper uses browser TLS impersonation because ordinary HTTP clients are
+rejected by the site. Use it conservatively and in accordance with
+Investing.com's terms and data-use restrictions:
 
-FRED observations take priority. Downloads are cached under `.cache/brent`;
-online runs refresh Yahoo's latest market data while avoiding a full history
-download each time.
+```powershell
+python investing_brent.py --interval P1D --period MAX --point-count 5000
+```
+
+The older `brent_spot.py` module remains for its standalone FRED/Yahoo research
+tests, but its adjusted spot series is not used by the dashboard.
 
 ## Brent aggregation analysis
 
@@ -80,6 +88,7 @@ python -m unittest discover -s tests -v
 ```text
 oil_dashboard/
 |-- generate_oil_dashboard.py
+|-- investing_brent.py
 |-- brent_spot.py
 |-- requirements.txt
 |-- assets/
@@ -101,5 +110,4 @@ Git.
 ## Data sources
 
 * [European Commission Weekly Oil Bulletin](https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en)
-* [FRED Brent Europe spot series](https://fred.stlouisfed.org/series/DCOILBRENTEU)
-* [Yahoo Finance Brent futures](https://finance.yahoo.com/quote/BZ%3DF/)
+* [Investing.com front-month Brent futures](https://ca.investing.com/commodities/brent-oil)

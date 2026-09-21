@@ -1,5 +1,7 @@
 openpyxl>=3.1.0
-pandas>=2.1.0
+pandas==2.1.4
 requests>=2.31.0
 yfinance>=0.2.40
 matplotlib>=3.8.0
+curl_cffi==0.15.0
+beautifulsoup4==4.15.0
