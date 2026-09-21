@@ -1853,8 +1853,8 @@ function updateRefuelCallout() {{
       fallAction = 'Wait until Tuesday or Wednesday';
       fallDetail = 'Give stations another day or two to lower their prices';
     }} else if (today < updateEnd) {{
-      fallAction = 'Wait until Wednesday';
-      fallDetail = 'The expected reduction may still be reaching stations';
+      fallAction = 'Check the price — or wait until Wednesday';
+      fallDetail = 'Some stations may already have lowered their prices';
     }} else {{
       fallAction = 'Check prices now';
       fallDetail = 'Stations should be reflecting this week’s lower price';
