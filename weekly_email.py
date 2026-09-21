@@ -30,7 +30,9 @@ BUTTONDOWN_EMAILS_URL = "https://api.buttondown.com/v1/emails"
 
 # The Buttondown account is shared with another site, so every signup from this
 # one carries a tag and a source. The Thursday email is sent to that tag only.
-NEWSLETTER_BUTTONDOWN_USERNAME = "erireal"
+# Empty hides the signup form on the site. Set to "erireal" once Buttondown has
+# finished verifying the account.
+NEWSLETTER_BUTTONDOWN_USERNAME = ""
 NEWSLETTER_SOURCE = "fuelforecast"
 
 # Expected pump-price change in cents/L = coefficient * Brent move ($/bbl) * 10,

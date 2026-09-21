@@ -44,7 +44,7 @@ runs Monday at 07:00 UTC, and can be started manually from the Actions tab.
 
 Visitors can subscribe on the dashboard to a Thursday email that says whether
 to fill up before Monday. Signups go straight to Buttondown through its native
-HTML form (`erireal` account, shared with another site). Each signup from this
+HTML form (`erireal` account, shared with another site; the form is hidden while `NEWSLETTER_BUTTONDOWN_USERNAME` in `weekly_email.py` is empty). Each signup from this
 site is tagged `fuelforecast` and carries `metadata__source=fuelforecast`.
 
 `weekly_email.py` builds the email from `.cache/weekly_signal.json` (written by
