@@ -1679,12 +1679,14 @@ function fmtDateShort(iso) {{
 function buildRefuelFreshness() {{
   const pumpDate = DATA.latest_date ?? DATA.dates[DATA.dates.length - 1];
   const brentDate = DATA.brent_latest?.date;
-  const forecastDate = new Date(Date.parse(pumpDate + 'T12:00:00Z') + 7 * 86400000)
-    .toISOString().slice(0, 10);
+  const forecastStart = new Date(Date.parse(pumpDate + 'T12:00:00Z') + 7 * 86400000);
+  const forecastEnd = new Date(forecastStart.getTime() + 2 * 86400000);
+  const updateWindow = `${{fmtDateShort(forecastStart.toISOString().slice(0, 10))}}–` +
+    `${{forecastEnd.toLocaleDateString('en-GB', {{ weekday:'short', day:'numeric', month:'short', timeZone:'UTC' }})}}`;
   const items = [
     ['Pump prices published', fmtDateShort(pumpDate)],
     ['Brent price as of', fmtDateShort(brentDate)],
-    ['Forecast for', fmtDateShort(forecastDate)]
+    ['Station update window', updateWindow]
   ];
   $('refuel-freshness').innerHTML = items.map(([label, value]) =>
     `<span class="refuel-freshness-item">` +
@@ -1802,6 +1804,10 @@ function updateRefuelCallout() {{
   const fuelName = currentFuel === 'diesel' ? 'diesel' : 'petrol';
   const brentDate = DATA.brent_latest?.date;
   const dataAgeDays = brentDate ? (Date.now() - dateX(brentDate)) / DAY_MS : Infinity;
+  const updateStart = dateX(DATA.latest_date, 7);
+  const updateEnd = updateStart + 2 * DAY_MS;
+  const now = new Date();
+  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12);
   $('refuel-question').textContent = `${{fuelName[0].toUpperCase() + fuelName.slice(1)}} forecast`;
   $('decision-petrol').classList.toggle('active', currentFuel === 'euro95');
   $('decision-diesel').classList.toggle('active', currentFuel === 'diesel');
@@ -1828,17 +1834,33 @@ function updateRefuelCallout() {{
     answer.style.color = '#94a3b8';
     context.innerHTML = whyLine;
   }} else if (expectedCents > 0) {{
-    answer.innerHTML =
-      `<span class="refuel-action">Fill up before Monday</span>` +
-      `<span class="refuel-detail">Thursday, Friday or Sunday are all good</span>`;
+    const riseAction = today < updateStart ? 'Fill up before Monday' : 'Fill up as soon as you can';
+    const riseDetail = today < updateStart
+      ? 'Thursday, Friday or Sunday are all good'
+      : 'Stations may already be starting to raise their prices';
+    answer.innerHTML = `<span class="refuel-action">${{riseAction}}</span>` +
+      `<span class="refuel-detail">${{riseDetail}}</span>`;
     answer.style.color = '#34d399';
     context.innerHTML =
       `<span class="refuel-context-line saving-line">You could avoid about €${{tankSaving}} extra on a 50L fill-up</span>` +
       whyLine;
   }} else {{
-    answer.innerHTML =
-      `<span class="refuel-action">Wait until Monday</span>` +
-      `<span class="refuel-detail">Then check as stations begin lowering their prices</span>`;
+    let fallAction, fallDetail;
+    if (today < updateStart) {{
+      fallAction = 'Wait until Monday or Tuesday';
+      fallDetail = 'Stations usually adjust at the start of the week';
+    }} else if (today === updateStart) {{
+      fallAction = 'Wait until Tuesday or Wednesday';
+      fallDetail = 'Give stations another day or two to lower their prices';
+    }} else if (today < updateEnd) {{
+      fallAction = 'Wait until Wednesday';
+      fallDetail = 'The expected reduction may still be reaching stations';
+    }} else {{
+      fallAction = 'Check prices now';
+      fallDetail = 'Stations should be reflecting this week’s lower price';
+    }}
+    answer.innerHTML = `<span class="refuel-action">${{fallAction}}</span>` +
+      `<span class="refuel-detail">${{fallDetail}}</span>`;
     answer.style.color = '#f59e0b';
     context.innerHTML =
       `<span class="refuel-context-line saving-line">Waiting could save about €${{tankSaving}} on a 50L fill-up</span>` +
