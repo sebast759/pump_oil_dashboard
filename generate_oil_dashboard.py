@@ -486,6 +486,8 @@ def extract_data(xlsx_path: Path, local: bool = False) -> dict:
         brent_daily_dates,
         brent_daily_prices,
     ) = fetch_brent(date_strs, local=local)
+    from ericeira_prices import load_prices
+    ericeira = load_prices(local=local)
 
     # Brent absolute YTD change ($/bbl)
     brent_jan_idx = max(0, next((i for i, ds in enumerate(date_strs) if ds >= f"{dates[-1].year}-01-01"), 0) - 1)
@@ -541,6 +543,7 @@ def extract_data(xlsx_path: Path, local: bool = False) -> dict:
         "brent_latest": brent_latest,
         "brent_daily_dates": brent_daily_dates,
         "brent_daily": brent_daily_prices,
+        "ericeira":     ericeira,
         "sensitivity":  sensitivity,
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
     }
@@ -1019,10 +1022,14 @@ button.history-legend-item {{ cursor: pointer; transition: opacity .15s, color .
   font-family: 'Inter', 'DM Sans', sans-serif;
 }}
 .refuel-illustration {{
-  display:none;
+  position:absolute; left:20px; top:50%; transform:translateY(-50%);
+  width:250px; height:190px; object-fit:contain; opacity:.95; pointer-events:none;
 }}
-.refuel-copy {{ max-width:760px; margin:0 auto; }}
-.decision-kicker {{ color:#8fa3bd; font-size:12px; font-weight:650; margin-bottom:8px; }}
+.refuel-copy {{ position:relative; max-width:680px; margin:0 auto; }}
+.decision-kicker {{
+  color:#f8fafc; font-size:34px; font-weight:800; line-height:1.15;
+  letter-spacing:-.025em; margin-bottom:14px;
+}}
 .decision-fuel-toggle {{
   display:inline-flex; padding:3px; margin:0 auto 14px; border-radius:999px;
   background:#111a2c; border:1px solid #334155;
@@ -1034,38 +1041,34 @@ button.history-legend-item {{ cursor: pointer; transition: opacity .15s, color .
 .decision-fuel-btn.active {{ background:#34435e; color:#fff; }}
 .refuel-freshness {{
   display:flex; justify-content:center; align-items:center; flex-wrap:wrap;
-  gap:6px 16px; margin:16px auto 0; color:#aebdd1;
+  gap:4px 14px; margin:12px auto 0; color:#aebdd1;
   font-size:11px; line-height:1.35;
 }}
 .refuel-freshness-item {{ white-space:nowrap; }}
 .refuel-freshness-label {{ color:#7184a0; font-weight:600; }}
 .refuel-freshness-value {{ color:#dbe5f3; font-weight:650; }}
-.refuel-question {{
-  color:#dbe5f3; font-size:15px; font-weight:550;
-  letter-spacing:-.01em; margin-bottom:7px;
-}}
 .refuel-answer {{
-  font-size:30px; font-weight:800; line-height:1.15; letter-spacing:-.025em;
+  font-size:24px; font-weight:800; line-height:1.15; letter-spacing:-.02em;
 }}
 .refuel-action, .refuel-detail {{ display: block; }}
 .refuel-detail {{
-  color:#dbe5f3; font-size:16px; font-weight:500;
-  line-height:1.4; margin-top:7px; letter-spacing:-.01em;
+  color:#9fb0c6; font-size:13px; font-weight:450;
+  line-height:1.4; margin-top:4px;
 }}
 .refuel-context {{
-  color:#dbe5f3; font-size:13px; font-weight:450;
+  color:#dbe5f3; font-size:12px; font-weight:450;
   line-height:1.5; margin-top:10px;
 }}
 .refuel-context-line {{ display: block; }}
 .saving-line {{
   width:max-content; max-width:100%; margin:0 auto;
-  padding:5px 11px; border-radius:999px;
+  padding:4px 10px; border-radius:999px;
   color:#ecfdf5; background:rgba(16,185,129,.12);
   border:1px solid rgba(16,185,129,.25); font-weight:600;
 }}
 .market-line {{ margin-top:13px; color:#cbd5e1; font-weight:350; }}
 .market-line strong {{ color:#f8fafc; font-weight:500; }}
-.why-line {{ margin-top:11px; color:#9fb0c6; }}
+.why-line {{ margin-top:8px; color:#8497b1; }}
 .backtest-summary {{
   display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px;
   margin:20px 0;
@@ -1076,8 +1079,26 @@ button.history-legend-item {{ cursor: pointer; transition: opacity .15s, color .
 }}
 .backtest-stat-value {{ color:#f8fafc; font-size:28px; font-weight:800; }}
 .backtest-stat-label {{ color:#91a4bd; font-size:12px; margin-top:5px; }}
+.station-price-grid {{
+  display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:12px;
+  margin:20px 0;
+}}
+.station-price {{
+  padding:18px; background:var(--bg-card); border:1px solid var(--border);
+  border-radius:10px; text-align:center;
+}}
+.station-price-name {{ color:#9fb0c6; font-size:12px; min-height:32px; }}
+.station-price-value {{ color:#f8fafc; font-size:27px; font-weight:800; margin:5px 0; }}
+.station-price-date {{ color:#7184a0; font-size:10px; }}
 @media (max-width:700px) {{ .backtest-summary {{ grid-template-columns:1fr; }} }}
+@media (max-width:700px) {{ .station-price-grid {{ grid-template-columns:repeat(2,1fr); }} }}
+@media (max-width: 1100px) {{
+  .refuel-illustration {{ width:170px; height:130px; left:8px; opacity:.2; }}
+}}
 @media (max-width: 700px) {{
+  .decision-kicker {{ font-size:26px; }}
+  .refuel-callout {{ padding:20px 14px; }}
+  .refuel-answer {{ font-size:20px; }}
   .refuel-copy {{ padding:0; }}
   .refuel-freshness {{ gap:5px 12px; }}
   .refuel-freshness-item {{ white-space:normal; }}
@@ -1216,6 +1237,7 @@ canvas {{ max-width: 100%; }}
     <button class="tab-btn" onclick="showTab(3)">Petrol vs diesel</button>
     <button class="tab-btn" onclick="showTab(4)">How the forecast works</button>
     <button class="tab-btn" onclick="showTab(6)">Prediction check</button>
+    <button class="tab-btn" onclick="showTab(7)">Ericeira prices</button>
     <button class="tab-btn" onclick="showTab(5)">About</button>
   </div>
 </div>
@@ -1235,7 +1257,6 @@ canvas {{ max-width: 100%; }}
             <button type="button" class="decision-fuel-btn" id="decision-petrol" onclick="switchFuel('euro95')">Petrol</button>
             <button type="button" class="decision-fuel-btn active" id="decision-diesel" onclick="switchFuel('diesel')">Diesel</button>
           </div>
-          <div class="refuel-question" id="refuel-question"></div>
           <div class="refuel-answer" id="refuel-answer"></div>
           <div class="refuel-context" id="refuel-context"></div>
           <div class="refuel-freshness" id="refuel-freshness" aria-label="Data dates"></div>
@@ -1448,6 +1469,23 @@ canvas {{ max-width: 100%; }}
 
   </div>
 
+  <!-- TAB 7: Ericeira station prices -->
+  <div class="panel" id="tab7">
+    <div class="section-title" style="text-align:center;">Fuel prices in Ericeira</div>
+    <div class="section-sub" style="text-align:center;margin-top:6px;">
+      Intermarché Ericeira · Estrada Nacional 116, Km 1
+    </div>
+    <div class="station-price-grid" id="ericeira-prices"></div>
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Local price history</span>
+        <span class="card-sub">Last 28 days · €/litre</span>
+      </div>
+      <div class="chart-wrap" style="height:400px;"><canvas id="ericeiraChart"></canvas></div>
+    </div>
+    <div class="info-box" id="ericeira-source" style="margin-top:16px;line-height:1.65;"></div>
+  </div>
+
   <!-- TAB 6: Prediction backtest -->
   <div class="panel" id="tab6">
     <div class="section-title" style="text-align:center;">Did the weekly advice actually work?</div>
@@ -1613,7 +1651,7 @@ const FUEL_DISPLAY = {{"Gasoline":"SP95","Diesel":"Diesel","Heating Oil":"Heatin
 
 // ---- UTILS ---------------------------------------------------------------
 const $ = id => document.getElementById(id);
-let histChart, ytdChart, tax95Chart, taxDChart, consAbsChart, consMixChart, backtestChart;
+let histChart, ytdChart, tax95Chart, taxDChart, consAbsChart, consMixChart, backtestChart, ericeiraChart;
 let currentFuel  = 'diesel';
 let currentRange = DATA.ytd_weeks;
 let currentCons  = 'absolute';
@@ -1644,6 +1682,7 @@ document.addEventListener('DOMContentLoaded', () => {{
   buildConsumption();
   buildSensitivity();
   buildBacktest();
+  buildEriceira();
   $('gen-datetime').textContent = DATA.generated_at;
 }});
 
@@ -1676,17 +1715,24 @@ function fmtDateShort(iso) {{
   }});
 }}
 
+function fmtDateNoYear(iso) {{
+  if (!iso) return 'unavailable';
+  return new Date(iso + 'T12:00:00Z').toLocaleDateString('en-GB', {{
+    weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC'
+  }});
+}}
+
 function buildRefuelFreshness() {{
   const pumpDate = DATA.latest_date ?? DATA.dates[DATA.dates.length - 1];
   const brentDate = DATA.brent_latest?.date;
   const forecastStart = new Date(Date.parse(pumpDate + 'T12:00:00Z') + 7 * 86400000);
   const forecastEnd = new Date(forecastStart.getTime() + 2 * 86400000);
-  const updateWindow = `${{fmtDateShort(forecastStart.toISOString().slice(0, 10))}}–` +
+  const updateWindow = `${{forecastStart.toLocaleDateString('en-GB', {{ weekday:'short', day:'numeric', timeZone:'UTC' }})}}–` +
     `${{forecastEnd.toLocaleDateString('en-GB', {{ weekday:'short', day:'numeric', month:'short', timeZone:'UTC' }})}}`;
   const items = [
-    ['Pump prices published', fmtDateShort(pumpDate)],
-    ['Brent price as of', fmtDateShort(brentDate)],
-    ['Station update window', updateWindow]
+    ['Pump prices', fmtDateNoYear(pumpDate)],
+    ['Brent', fmtDateNoYear(brentDate)],
+    ['Stations update', updateWindow]
   ];
   $('refuel-freshness').innerHTML = items.map(([label, value]) =>
     `<span class="refuel-freshness-item">` +
@@ -1801,14 +1847,12 @@ function updateRefuelCallout() {{
   const move = latestBrentMove();
   const answer = $('refuel-answer');
   const context = $('refuel-context');
-  const fuelName = currentFuel === 'diesel' ? 'diesel' : 'petrol';
   const brentDate = DATA.brent_latest?.date;
   const dataAgeDays = brentDate ? (Date.now() - dateX(brentDate)) / DAY_MS : Infinity;
   const updateStart = dateX(DATA.latest_date, 7);
   const updateEnd = updateStart + 2 * DAY_MS;
   const now = new Date();
   const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12);
-  $('refuel-question').textContent = `${{fuelName[0].toUpperCase() + fuelName.slice(1)}} forecast`;
   $('decision-petrol').classList.toggle('active', currentFuel === 'euro95');
   $('decision-diesel').classList.toggle('active', currentFuel === 'diesel');
   if (move == null || dataAgeDays > 10) {{
@@ -3095,6 +3139,70 @@ function buildConsumption() {{
   }});
 }}
 // ---- SENSITIVITY ---------------------------------------------------------
+function buildEriceira() {{
+  const data = DATA.ericeira;
+  const grid = $('ericeira-prices');
+  if (!data?.prices?.length) {{
+    grid.innerHTML = '<div class="info-box">Local station prices are temporarily unavailable.</div>';
+    $('ericeira-source').textContent = 'The last FuelFlash update could not be retrieved.';
+    return;
+  }}
+
+  grid.innerHTML = '';
+  data.prices.forEach(item => {{
+    const card = document.createElement('div');
+    card.className = 'station-price';
+    const name = document.createElement('div');
+    name.className = 'station-price-name';
+    name.textContent = item.fuel;
+    const value = document.createElement('div');
+    value.className = 'station-price-value mono';
+    value.textContent = `€${{Number(item.price).toFixed(3)}}`;
+    const date = document.createElement('div');
+    date.className = 'station-price-date';
+    date.textContent = item.reported ? `Reported ${{item.reported}}` : 'Report time unavailable';
+    card.append(name, value, date);
+    grid.appendChild(card);
+  }});
+
+  $('ericeira-source').innerHTML =
+    `Prices reported by <a href="${{data.url}}" target="_blank" rel="noopener noreferrer" ` +
+    `style="color:#f59e0b;">FuelFlash</a> for Intermarché Ericeira. ` +
+    `Station prices can change before this page refreshes.`;
+
+  const history = data.history ?? [];
+  if (!history.length) return;
+  const series = [
+    ['Diesel', 'Gasóleo', '#3b82f6'],
+    ['Super Basic', 'Gasolina 95 simples', '#f59e0b'],
+    ['Super Plus Basic', 'Gasolina 98 simples', '#ec4899'],
+    ['Premium Diesel', 'Gasóleo especial', '#06b6d4']
+  ];
+  ericeiraChart = new Chart($('ericeiraChart').getContext('2d'), {{
+    type:'line',
+    data:{{
+      labels:history.map(row => fmtDateShort(row.date).replace(/ \d{{4}}$/, '')),
+      datasets:series.map(([key,label,color]) => ({{
+        label, data:history.map(row => row[key] ?? null), borderColor:color,
+        backgroundColor:'transparent', borderWidth:2, pointRadius:2,
+        pointHoverRadius:5, stepped:true, spanGaps:true
+      }}))
+    }},
+    options:{{
+      responsive:true, maintainAspectRatio:false,
+      interaction:{{ mode:'index', intersect:false }},
+      plugins:{{
+        legend:{{ labels:{{ color:'#cbd5e1', usePointStyle:true }} }},
+        tooltip:{{ callbacks:{{ label:ctx => ` ${{ctx.dataset.label}}: €${{ctx.parsed.y.toFixed(3)}}/L` }} }}
+      }},
+      scales:{{
+        x:{{ grid:{{ display:false }}, ticks:{{ color:'#8292aa', maxTicksLimit:10, maxRotation:0 }} }},
+        y:{{ grid:{{ color:CHART_GRID }}, ticks:{{ color:'#94a3b8', callback:v => `€${{Number(v).toFixed(2)}}` }} }}
+      }}
+    }}
+  }});
+}}
+
 function buildBacktest() {{
   const rows = [];
   const first = Math.max(1, DATA.dates.length - 53);
