@@ -1786,6 +1786,18 @@ function fmtDateNoYear(iso) {{
   }});
 }}
 
+// Investing.com's daily bars carry no real intraday "last updated" tick --
+// every bar's own timestamp is fixed at midnight UTC. The closest honest
+// signal we have is when this page itself last fetched that price.
+function brentCheckedTimeParis() {{
+  if (!DATA.generated_at) return null;
+  const instant = new Date(DATA.generated_at.replace(' ', 'T') + ':00Z');
+  if (isNaN(instant)) return null;
+  return instant.toLocaleTimeString('en-GB', {{
+    hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris'
+  }});
+}}
+
 function buildRefuelFreshness() {{
   const pumpDate = DATA.latest_date ?? DATA.dates[DATA.dates.length - 1];
   const brentDate = DATA.brent_latest?.date;
@@ -1796,10 +1808,10 @@ function buildRefuelFreshness() {{
   // isn't out until the Thursday after that (pumpDate + 10 days).
   const nextMonday = fmtDateNoYear(isoFromMs(dateX(pumpDate, 7)));
   const nextBulletin = fmtDateNoYear(isoFromMs(dateX(pumpDate, 10)));
-  const brentTime = DATA.generated_at ? DATA.generated_at.split(' ')[1] : null;
+  const brentTime = brentCheckedTimeParis();
   const items = [
     ['Pump prices', `as of ${{fmtDateNoYear(pumpDate)}} (${{nextMonday}} to be updated by EU authorities on ${{nextBulletin}})`],
-    ['Brent', brentTime ? `${{fmtDateNoYear(brentDate)}} @ ${{brentTime}} UTC` : fmtDateNoYear(brentDate)]
+    ['Brent', brentTime ? `${{fmtDateNoYear(brentDate)}} @ ${{brentTime}} Paris` : fmtDateNoYear(brentDate)]
   ];
   $('refuel-freshness').innerHTML = items.map(([label, value]) =>
     `<span class="refuel-freshness-item">` +
