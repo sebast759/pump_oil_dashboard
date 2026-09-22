@@ -817,7 +817,7 @@ def build_html(data: dict) -> str:
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Fuel Forecast · Petrol and Diesel Prices in Europe</title>
+<title>Fuel Forecast · Euro-95 and Diesel Prices in Europe</title>
 <meta name="description" content="Weekly diesel and Euro-95 pump prices across Europe, with a next-week forecast from Brent crude moves. Should you fill up now or wait?">
 <meta name="robots" content="index, follow">
 <meta name="author" content="Fuel Forecast">
@@ -827,14 +827,14 @@ def build_html(data: dict) -> str:
 <meta property="og:site_name" content="Fuel Forecast">
 <meta property="og:locale" content="en_GB">
 <meta property="og:url" content="https://fuelforecast.eu/">
-<meta property="og:title" content="Fuel Forecast · Petrol and Diesel Prices in Europe">
+<meta property="og:title" content="Fuel Forecast · Euro-95 and Diesel Prices in Europe">
 <meta property="og:description" content="Weekly diesel and Euro-95 pump prices across Europe, with a next-week forecast from Brent crude moves. Should you fill up now or wait?">
 <meta property="og:image" content="https://fuelforecast.eu/og-image.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Fuel Forecast next-week outlook and European pump-price chart">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Fuel Forecast · Petrol and Diesel Prices in Europe">
+<meta name="twitter:title" content="Fuel Forecast · Euro-95 and Diesel Prices in Europe">
 <meta name="twitter:description" content="Weekly diesel and Euro-95 pump prices across Europe, with a next-week forecast from Brent crude moves. Should you fill up now or wait?">
 <meta name="twitter:image" content="https://fuelforecast.eu/og-image.png">
 <meta name="twitter:image:alt" content="Fuel Forecast next-week outlook and European pump-price chart">
@@ -1297,7 +1297,7 @@ canvas {{ max-width: 100%; }}
     <button class="tab-btn active" onclick="showTab(0)">When to fill up</button>
     <button class="tab-btn" onclick="showTab(1)" id="ytd-tab-label">Price changes</button>
     <button class="tab-btn" onclick="showTab(2)">Fuel tax</button>
-    <button class="tab-btn" onclick="showTab(3)">Petrol vs diesel</button>
+    <button class="tab-btn" onclick="showTab(3)">Euro-95 vs diesel</button>
     <button class="tab-btn" onclick="showTab(4)">How the forecast works</button>
     <button class="tab-btn" onclick="showTab(6)">Prediction check</button>
     <button class="tab-btn" onclick="showTab(7)">Ericeira prices</button>
@@ -1317,7 +1317,7 @@ canvas {{ max-width: 100%; }}
         <div class="refuel-copy">
           <div class="decision-kicker">When should you fill up?</div>
           <div class="decision-fuel-toggle" aria-label="Choose fuel type">
-            <button type="button" class="decision-fuel-btn" id="decision-petrol" onclick="switchFuel('euro95')">Petrol</button>
+            <button type="button" class="decision-fuel-btn" id="decision-petrol" onclick="switchFuel('euro95')">Euro-95</button>
             <button type="button" class="decision-fuel-btn active" id="decision-diesel" onclick="switchFuel('diesel')">Diesel</button>
           </div>
           <div class="refuel-answer" id="refuel-answer"></div>
@@ -1558,7 +1558,7 @@ canvas {{ max-width: 100%; }}
     </div>
     <div style="display:flex;justify-content:center;margin-top:16px;">
       <div class="toggle-row" aria-label="Fuel used for prediction check">
-        <button class="toggle-btn" id="backtest95" onclick="switchFuel('euro95')">Petrol</button>
+        <button class="toggle-btn" id="backtest95" onclick="switchFuel('euro95')">Euro-95</button>
         <button class="toggle-btn active" id="backtestD" onclick="switchFuel('diesel')">Diesel</button>
       </div>
     </div>
@@ -1867,7 +1867,7 @@ function buildBadges() {{
 // ---- HISTORICAL CHART ----------------------------------------------------
 function latestBrentMove() {{
   // Prefer the smoothed weekly-average outlook (current week so far vs the
-  // last completed week) — see weekly_email.py's weekly_brent_signal for why:
+  // last completed week). See weekly_email.py's weekly_brent_signal for why:
   // stations price off the previous week's average, not a single day.
   const outlook = DATA.brent_weekly?.next_week_outlook;
   if (outlook != null) return outlook;
@@ -1877,24 +1877,34 @@ function latestBrentMove() {{
   return latest != null && previous != null ? latest - previous : null;
 }}
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function dateX(iso, leadDays=0) {{
+  return Date.parse(iso + 'T12:00:00Z') + leadDays * DAY_MS;
+}}
+
+// The Monday stations next reset prices on: the day after the current,
+// still-incomplete week ends, or latest_date + 7 days if that isn't known yet.
+function nextUpdateDateLabel() {{
+  const w = DATA.brent_weekly;
+  const ms = w?.current_week_end != null
+    ? dateX(w.current_week_end) + DAY_MS
+    : dateX(DATA.latest_date, 7);
+  return fmtDateNoYear(new Date(ms).toISOString().slice(0, 10));
+}}
+
 // Mirrors weekly_email.py's weekly_context_line(): explain a move that
 // already happened this week, only when it conflicts with where next
 // week's update is heading (otherwise the headline advice already covers it).
-function weeklyContextLine() {{
+function weeklyContextLine(nextUpdate) {{
   const w = DATA.brent_weekly;
   if (!w || w.this_week_move == null || w.next_week_outlook == null) return null;
   if (Math.abs(w.this_week_move) < 1 || w.this_week_move * w.next_week_outlook >= 0) return null;
   const thisDirection = w.this_week_move > 0 ? 'raised' : 'lowered';
   const nextDirection = w.next_week_outlook > 0 ? 'another rise' : 'a fall';
   return `<span class="refuel-context-line why-line">Stations likely already ${{thisDirection}} prices ` +
-    `this week, based on last week's Brent average. But this week's Brent prices point to ` +
-    `${{nextDirection}} at the next update.</span>`;
-}}
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function dateX(iso, leadDays=0) {{
-  return Date.parse(iso + 'T12:00:00Z') + leadDays * DAY_MS;
+    `this week, based on last week's Brent average. But this week's Brent points to ${{nextDirection}} ` +
+    `at the next update, on ${{nextUpdate}}.</span>`;
 }}
 
 function displayedBrentSeries(startDate=DATA.dates[0]) {{
@@ -1934,10 +1944,6 @@ function updateRefuelCallout() {{
   const context = $('refuel-context');
   const brentDate = DATA.brent_latest?.date;
   const dataAgeDays = brentDate ? (Date.now() - dateX(brentDate)) / DAY_MS : Infinity;
-  const updateStart = dateX(DATA.latest_date, 7);
-  const updateEnd = updateStart + 2 * DAY_MS;
-  const now = new Date();
-  const today = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 12);
   $('decision-petrol').classList.toggle('active', currentFuel === 'euro95');
   $('decision-diesel').classList.toggle('active', currentFuel === 'diesel');
   if (move == null || dataAgeDays > 10) {{
@@ -1951,50 +1957,31 @@ function updateRefuelCallout() {{
   const expectedCents = coefficient * move * 10;
   const cents = Math.abs(Math.round(expectedCents));
   const tankSaving = (Math.round(Math.abs(expectedCents / 100 * 50) * 10) / 10).toFixed(2);
-  const direction = expectedCents >= 0 ? 'rise' : 'fall';
-  const whyLine =
-    `<span class="refuel-context-line why-line">Expected after the next update: ` +
-    `<strong>${{direction}} of about ${{cents}} cents/L</strong>. Stations may vary.</span>`;
-  const weeklyNote = weeklyContextLine() ?? '';
+  const nextUpdate = nextUpdateDateLabel();
+  const weeklyNote = weeklyContextLine(nextUpdate) ?? '';
 
   if (Math.abs(expectedCents) < 2) {{
     answer.innerHTML =
       '<span class="refuel-action">Any day is fine</span>' +
-      '<span class="refuel-detail">No meaningful price change is expected next week</span>';
+      '<span class="refuel-detail">No meaningful price change is expected at the next update</span>';
     answer.style.color = '#94a3b8';
-    context.innerHTML = whyLine + weeklyNote;
+    context.innerHTML = weeklyNote;
   }} else if (expectedCents > 0) {{
-    const riseAction = today < updateStart ? 'Fill up before Monday' : 'Fill up as soon as you can';
-    const riseDetail = today < updateStart
-      ? 'Thursday, Friday or Sunday are all good'
-      : 'Stations may already be starting to raise their prices';
-    answer.innerHTML = `<span class="refuel-action">${{riseAction}}</span>` +
-      `<span class="refuel-detail">${{riseDetail}}</span>`;
+    answer.innerHTML =
+      '<span class="refuel-action">Fill up before Monday</span>' +
+      `<span class="refuel-detail">Brent points to a rise of about ${{cents}} cents/L at the next update</span>`;
     answer.style.color = '#34d399';
     context.innerHTML =
       `<span class="refuel-context-line saving-line">You could avoid about €${{tankSaving}} extra on a 50L fill-up</span>` +
-      whyLine + weeklyNote;
+      weeklyNote;
   }} else {{
-    let fallAction, fallDetail;
-    if (today < updateStart) {{
-      fallAction = 'Wait until Monday or Tuesday';
-      fallDetail = 'Stations usually adjust at the start of the week';
-    }} else if (today === updateStart) {{
-      fallAction = 'Wait until Tuesday or Wednesday';
-      fallDetail = 'Give stations another day or two to lower their prices';
-    }} else if (today < updateEnd) {{
-      fallAction = 'Check the price — or wait until Wednesday';
-      fallDetail = 'Some stations may already have lowered their prices';
-    }} else {{
-      fallAction = 'Check prices now';
-      fallDetail = 'Stations should be reflecting this week’s lower price';
-    }}
-    answer.innerHTML = `<span class="refuel-action">${{fallAction}}</span>` +
-      `<span class="refuel-detail">${{fallDetail}}</span>`;
+    answer.innerHTML =
+      '<span class="refuel-action">Wait until next week</span>' +
+      `<span class="refuel-detail">Brent points to a fall of about ${{cents}} cents/L at the next update</span>`;
     answer.style.color = '#f59e0b';
     context.innerHTML =
       `<span class="refuel-context-line saving-line">Waiting could save about €${{tankSaving}} on a 50L fill-up</span>` +
-      whyLine + weeklyNote;
+      weeklyNote;
   }}
 }}
 
@@ -3321,7 +3308,7 @@ function buildBacktest() {{
   $('backtest-saving').style.color = saving >= 0 ? '#34d399' : '#f87171';
   $('backtest-accuracy').textContent = calls.length ? `${{Math.round(correct / calls.length * 100)}}%` : '—';
   $('backtest-weeks').textContent = `${{calls.length}} of ${{rows.length}}`;
-  const fuelName = currentFuel === 'diesel' ? 'diesel' : 'petrol';
+  const fuelName = currentFuel === 'diesel' ? 'diesel' : 'Euro-95';
   $('backtest-note').innerHTML =
     `<strong style="color:#f1f5f9;">What “saved” means:</strong> ` +
     `we replay one 50L ${{fuelName}} purchase every week. When the model said prices would rise, ` +

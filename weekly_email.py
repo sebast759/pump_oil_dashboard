@@ -19,7 +19,7 @@ import math
 import os
 import sys
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import requests
@@ -41,7 +41,7 @@ FORECAST_COEFFICIENTS = {
     "diesel": (0.09, 0.06),
     "euro95": (0.07, 0.05),
 }
-FUEL_LABELS = {"diesel": "Diesel", "euro95": "Petrol"}
+FUEL_LABELS = {"diesel": "Diesel", "euro95": "Euro-95"}
 NO_CHANGE_CENTS = 2       # below this, "any day is fine"
 TANK_LITRES = 50
 MAX_BRENT_AGE_DAYS = 10   # older data are too stale to advise on
@@ -134,6 +134,22 @@ def weekly_brent_signal(
     }
 
 
+def next_update_date(current_week_end: str | None, latest_pump_date: str) -> str:
+    """The Monday stations next reset prices on: the day after the current,
+    still-incomplete week ends, or latest_pump_date + 7 days if that isn't
+    known yet. Mirrors the site's nextUpdateDateLabel()."""
+    if current_week_end:
+        base = datetime.strptime(current_week_end, "%Y-%m-%d").date()
+        return (base + timedelta(days=1)).strftime("%Y-%m-%d")
+    return (datetime.strptime(latest_pump_date, "%Y-%m-%d").date() + timedelta(days=7)).strftime("%Y-%m-%d")
+
+
+def format_date_short(iso: str) -> str:
+    """'2026-09-28' -> 'Mon 28 Sep', avoiding strftime's non-portable '%-d'."""
+    d = datetime.strptime(iso, "%Y-%m-%d").date()
+    return f"{d.strftime('%a')} {d.day} {d.strftime('%b')}"
+
+
 def signal_from_data(data: dict) -> dict:
     """Latest Brent observation and the weekly-average move, as the dashboard sees them."""
     latest = data.get("brent_latest") or {}
@@ -151,6 +167,7 @@ def signal_from_data(data: dict) -> dict:
         "brent_date": brent_date,
         "this_week_move": (weekly or {}).get("this_week_move"),
         "next_week_outlook": (weekly or {}).get("next_week_outlook"),
+        "next_update_date": next_update_date((weekly or {}).get("current_week_end"), data["latest_date"]),
     }
 
 
@@ -176,23 +193,25 @@ def _fuel_section(advice: Advice) -> str:
         return (
             f"## {label}: fill up before Monday\n\n"
             f"Pump prices are expected to rise about **{advice.cents} cents/L** "
-            f"once stations update. Filling up before then could save about "
+            f"at the next update. Filling up before then could save about "
             f"**€{advice.tank_saving:.2f}** on a {TANK_LITRES}L tank."
         )
     if advice.action == "wait":
         return (
-            f"## {label}: no need to rush\n\n"
+            f"## {label}: wait until next week\n\n"
             f"Pump prices are expected to fall about **{advice.cents} cents/L** "
-            f"once stations update. Waiting until Tuesday or Wednesday could save "
-            f"about **€{advice.tank_saving:.2f}** on a {TANK_LITRES}L tank."
+            f"at the next update. Waiting could save about "
+            f"**€{advice.tank_saving:.2f}** on a {TANK_LITRES}L tank."
         )
     return (
         f"## {label}: any day is fine\n\n"
-        "No meaningful price change is expected next week."
+        "No meaningful price change is expected at the next update."
     )
 
 
-def weekly_context_line(this_week_move: float | None, next_week_outlook: float | None) -> str | None:
+def weekly_context_line(
+    this_week_move: float | None, next_week_outlook: float | None, next_update: str | None = None
+) -> str | None:
     """Explain a move that already happened this week, but only when it
     conflicts with where next week's update is heading — e.g. stations just
     raised prices off last week's average, even though this week's Brent has
@@ -203,10 +222,11 @@ def weekly_context_line(this_week_move: float | None, next_week_outlook: float |
         return None
     this_direction = "raised" if this_week_move > 0 else "lowered"
     next_direction = "another rise" if next_week_outlook > 0 else "a fall"
+    when = f", on {format_date_short(next_update)}" if next_update else ""
     return (
         f"Stations likely already {this_direction} prices this week, based on last "
-        f"week's Brent average. But this week's Brent prices point to {next_direction} "
-        "at the next update."
+        f"week's Brent average. But this week's Brent points to {next_direction} "
+        f"at the next update{when}."
     )
 
 
@@ -224,11 +244,13 @@ def build_email(signal: dict) -> tuple[str, str]:
     if any(a.action == "fill_up" for a in advices):
         subject = "Fuel tip: fill up before Monday"
     elif any(a.action == "wait" for a in advices):
-        subject = "Fuel tip: no need to rush, prices set to fall"
+        subject = "Fuel tip: wait until next week"
     else:
         subject = "Fuel tip: any day is fine next week"
 
-    context_line = weekly_context_line(signal.get("this_week_move"), signal.get("next_week_outlook"))
+    context_line = weekly_context_line(
+        signal.get("this_week_move"), signal.get("next_week_outlook"), signal.get("next_update_date")
+    )
     direction = "up" if raw_move >= 0 else "down"
     body = "\n\n".join([
         "Here is your Thursday fuel forecast.",

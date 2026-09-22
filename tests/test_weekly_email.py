@@ -35,13 +35,15 @@ class SignalTests(unittest.TestCase):
                 "brent_latest": {"price": 99.0, "previous_price": 95.0, "date": "2026-09-21"}}
         self.assertEqual(weekly_email.signal_from_data(data),
                          {"brent_price": 99.0, "brent_previous": 95.0, "brent_date": "2026-09-21",
-                          "this_week_move": None, "next_week_outlook": None})
+                          "this_week_move": None, "next_week_outlook": None,
+                          "next_update_date": "2026-09-21"})
 
     def test_falls_back_to_weekly_series(self) -> None:
         data = {"brent": [90.0, None, 92.0], "latest_date": "2026-09-14", "brent_latest": None}
         self.assertEqual(weekly_email.signal_from_data(data),
                          {"brent_price": 92.0, "brent_previous": 90.0, "brent_date": "2026-09-14",
-                          "this_week_move": None, "next_week_outlook": None})
+                          "this_week_move": None, "next_week_outlook": None,
+                          "next_update_date": "2026-09-21"})
 
     def test_stale_data_are_not_sent(self) -> None:
         signal = {"brent_price": 99.0, "brent_previous": 95.0, "brent_date": "2026-09-01"}
@@ -109,11 +111,26 @@ class WeeklyBrentSignalTests(unittest.TestCase):
         self.assertIsNone(signal["next_week_outlook"])  # that week is already complete, no partial week yet
 
 
+class NextUpdateDateTests(unittest.TestCase):
+    def test_uses_current_week_end_plus_one_day(self) -> None:
+        self.assertEqual(weekly_email.next_update_date("2026-09-27", "2026-09-14"), "2026-09-28")
+
+    def test_falls_back_to_pump_date_plus_seven_days(self) -> None:
+        self.assertEqual(weekly_email.next_update_date(None, "2026-09-14"), "2026-09-21")
+
+    def test_format_date_short(self) -> None:
+        self.assertEqual(weekly_email.format_date_short("2026-09-28"), "Mon 28 Sep")
+
+
 class WeeklyContextLineTests(unittest.TestCase):
     def test_conflicting_moves_produce_a_note(self) -> None:
         line = weekly_email.weekly_context_line(3.72, -5.45)
         self.assertIn("raised", line)
         self.assertIn("fall", line)
+
+    def test_includes_the_next_update_date_when_given(self) -> None:
+        line = weekly_email.weekly_context_line(3.72, -5.45, next_update="2026-09-28")
+        self.assertIn("Mon 28 Sep", line)
 
     def test_agreeing_moves_produce_no_note(self) -> None:
         self.assertIsNone(weekly_email.weekly_context_line(3.0, 4.0))
