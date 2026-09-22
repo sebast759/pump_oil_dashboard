@@ -171,10 +171,10 @@ def _save_brent_cache(
 
 
 def _load_brent_cache(date_strs: list) -> tuple:
-    """Load Brent prices from CSV cache. Returns (aligned, brent_ytd, brent_latest)."""
+    """Load Brent prices from CSV cache. Returns (aligned, brent_ytd, brent_latest, daily_dates, daily_prices)."""
     import csv
     if not BRENT_CACHE_CSV.exists():
-        return [None] * len(date_strs), None, None
+        return [None] * len(date_strs), None, None, [], []
     brent_map = {}
     brent_latest = None
     daily_map = {}
