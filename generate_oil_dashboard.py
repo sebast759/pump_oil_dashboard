@@ -554,7 +554,7 @@ def extract_data(xlsx_path: Path, local: bool = False) -> dict:
         "brent_weekly": weekly_brent_signal(brent_daily_dates, brent_daily_prices),
         "ericeira":     ericeira,
         "sensitivity":  sensitivity,
-        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"),
     }
 
 
@@ -1792,13 +1792,14 @@ function buildRefuelFreshness() {{
   // The EU Oil Bulletin reports prices observed on a Monday, but the file
   // itself is only published the following Thursday (a fixed 3-day lag) --
   // see https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en.
-  // So the batch covering the *next* Monday's prices isn't out until the
-  // Thursday after that: pumpDate + 7 days (next Monday) + 3 days.
+  // So the batch covering the *next* Monday's prices (pumpDate + 7 days)
+  // isn't out until the Thursday after that (pumpDate + 10 days).
+  const nextMonday = fmtDateNoYear(isoFromMs(dateX(pumpDate, 7)));
   const nextBulletin = fmtDateNoYear(isoFromMs(dateX(pumpDate, 10)));
+  const brentTime = DATA.generated_at ? DATA.generated_at.split(' ')[1] : null;
   const items = [
-    ['Pump prices', fmtDateNoYear(pumpDate)],
-    ['Brent', fmtDateNoYear(brentDate)],
-    ['Next bulletin due', nextBulletin]
+    ['Pump prices', `as of ${{fmtDateNoYear(pumpDate)}} (${{nextMonday}} to be updated by EU authorities on ${{nextBulletin}})`],
+    ['Brent', brentTime ? `${{fmtDateNoYear(brentDate)}} @ ${{brentTime}} UTC` : fmtDateNoYear(brentDate)]
   ];
   $('refuel-freshness').innerHTML = items.map(([label, value]) =>
     `<span class="refuel-freshness-item">` +
