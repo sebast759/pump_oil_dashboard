@@ -1789,14 +1789,16 @@ function fmtDateNoYear(iso) {{
 function buildRefuelFreshness() {{
   const pumpDate = DATA.latest_date ?? DATA.dates[DATA.dates.length - 1];
   const brentDate = DATA.brent_latest?.date;
-  const forecastStart = new Date(Date.parse(pumpDate + 'T12:00:00Z') + 7 * 86400000);
-  const forecastEnd = new Date(forecastStart.getTime() + 2 * 86400000);
-  const updateWindow = `${{forecastStart.toLocaleDateString('en-GB', {{ weekday:'short', day:'numeric', timeZone:'UTC' }})}}–` +
-    `${{forecastEnd.toLocaleDateString('en-GB', {{ weekday:'short', day:'numeric', month:'short', timeZone:'UTC' }})}}`;
+  // The EU Oil Bulletin reports prices observed on a Monday, but the file
+  // itself is only published the following Thursday (a fixed 3-day lag) --
+  // see https://energy.ec.europa.eu/data-and-analysis/weekly-oil-bulletin_en.
+  // So the batch covering the *next* Monday's prices isn't out until the
+  // Thursday after that: pumpDate + 7 days (next Monday) + 3 days.
+  const nextBulletin = fmtDateNoYear(isoFromMs(dateX(pumpDate, 10)));
   const items = [
     ['Pump prices', fmtDateNoYear(pumpDate)],
     ['Brent', fmtDateNoYear(brentDate)],
-    ['Stations update', updateWindow]
+    ['Next bulletin due', nextBulletin]
   ];
   $('refuel-freshness').innerHTML = items.map(([label, value]) =>
     `<span class="refuel-freshness-item">` +
@@ -1883,6 +1885,10 @@ function dateX(iso, leadDays=0) {{
   return Date.parse(iso + 'T12:00:00Z') + leadDays * DAY_MS;
 }}
 
+function isoFromMs(ms) {{
+  return new Date(ms).toISOString().slice(0, 10);
+}}
+
 // The Monday stations next reset prices on: the day after the current,
 // still-incomplete week ends, or latest_date + 7 days if that isn't known yet.
 function nextUpdateDateLabel() {{
@@ -1890,7 +1896,7 @@ function nextUpdateDateLabel() {{
   const ms = w?.current_week_end != null
     ? dateX(w.current_week_end) + DAY_MS
     : dateX(DATA.latest_date, 7);
-  return fmtDateNoYear(new Date(ms).toISOString().slice(0, 10));
+  return fmtDateNoYear(isoFromMs(ms));
 }}
 
 // Mirrors weekly_email.py's weekly_context_line(): explain a move that
