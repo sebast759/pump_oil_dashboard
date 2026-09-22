@@ -73,6 +73,15 @@ python investing_brent.py --interval P1D --period MAX --point-count 5000
 The older `brent_spot.py` module remains for its standalone FRED/Yahoo research
 tests, but its adjusted spot series is not used by the dashboard.
 
+**Investing.com returns HTTP 403 to GitHub Actions' IPs**, so the live scrape
+always fails in CI and the build falls back to the committed `brent_cache.csv`
+snapshot. That means the deployed site's Brent price only updates when someone
+runs `python generate_oil_dashboard.py` on a machine Investing.com doesn't
+block and commits the refreshed `brent_cache.csv` — CI alone cannot refresh
+it. If the snapshot goes past `MAX_BRENT_AGE_DAYS` (10 days, in
+`weekly_email.py`) the "when should you fill up" callout and the Thursday
+email both stop giving a recommendation.
+
 ## Brent aggregation analysis
 
 The research script compares the latest daily Brent print with trailing

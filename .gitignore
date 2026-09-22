@@ -1,7 +1,11 @@
 # Cached data — regenerated on each run, never commit
-brent_cache.csv
 *.xlsx
 .cache/
+
+# brent_cache.csv IS committed: Investing.com returns HTTP 403 to GitHub
+# Actions' IPs, so CI can never fetch Brent data live and always falls back
+# to this file. Refresh it by running generate_oil_dashboard.py locally and
+# committing the updated file. See README's "Brent data" section.
 
 # Python
 __pycache__/
