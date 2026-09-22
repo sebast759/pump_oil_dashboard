@@ -37,6 +37,7 @@ from weekly_email import (
     NEWSLETTER_BUTTONDOWN_USERNAME,
     NEWSLETTER_SOURCE,
     signal_from_data,
+    weekly_brent_signal,
 )
 
 try:
@@ -550,6 +551,7 @@ def extract_data(xlsx_path: Path, local: bool = False) -> dict:
         "brent_latest": brent_latest,
         "brent_daily_dates": brent_daily_dates,
         "brent_daily": brent_daily_prices,
+        "brent_weekly": weekly_brent_signal(brent_daily_dates, brent_daily_prices),
         "ericeira":     ericeira,
         "sensitivity":  sensitivity,
         "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -1864,10 +1866,29 @@ function buildBadges() {{
 
 // ---- HISTORICAL CHART ----------------------------------------------------
 function latestBrentMove() {{
+  // Prefer the smoothed weekly-average outlook (current week so far vs the
+  // last completed week) — see weekly_email.py's weekly_brent_signal for why:
+  // stations price off the previous week's average, not a single day.
+  const outlook = DATA.brent_weekly?.next_week_outlook;
+  if (outlook != null) return outlook;
   const previous = DATA.brent_latest?.previous_price ??
     DATA.brent.slice(0, -1).reverse().find(v => v != null);
   const latest = DATA.brent_latest?.price ?? DATA.brent[DATA.brent.length - 1];
   return latest != null && previous != null ? latest - previous : null;
+}}
+
+// Mirrors weekly_email.py's weekly_context_line(): explain a move that
+// already happened this week, only when it conflicts with where next
+// week's update is heading (otherwise the headline advice already covers it).
+function weeklyContextLine() {{
+  const w = DATA.brent_weekly;
+  if (!w || w.this_week_move == null || w.next_week_outlook == null) return null;
+  if (Math.abs(w.this_week_move) < 1 || w.this_week_move * w.next_week_outlook >= 0) return null;
+  const thisDirection = w.this_week_move > 0 ? 'raised' : 'lowered';
+  const nextDirection = w.next_week_outlook > 0 ? 'another rise' : 'a fall';
+  return `<span class="refuel-context-line why-line">Stations likely already ${{thisDirection}} prices ` +
+    `this week, based on last week's Brent average. But this week's Brent prices point to ` +
+    `${{nextDirection}} at the next update.</span>`;
 }}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -1934,13 +1955,14 @@ function updateRefuelCallout() {{
   const whyLine =
     `<span class="refuel-context-line why-line">Expected after the next update: ` +
     `<strong>${{direction}} of about ${{cents}} cents/L</strong>. Stations may vary.</span>`;
+  const weeklyNote = weeklyContextLine() ?? '';
 
   if (Math.abs(expectedCents) < 2) {{
     answer.innerHTML =
       '<span class="refuel-action">Any day is fine</span>' +
       '<span class="refuel-detail">No meaningful price change is expected next week</span>';
     answer.style.color = '#94a3b8';
-    context.innerHTML = whyLine;
+    context.innerHTML = whyLine + weeklyNote;
   }} else if (expectedCents > 0) {{
     const riseAction = today < updateStart ? 'Fill up before Monday' : 'Fill up as soon as you can';
     const riseDetail = today < updateStart
@@ -1951,7 +1973,7 @@ function updateRefuelCallout() {{
     answer.style.color = '#34d399';
     context.innerHTML =
       `<span class="refuel-context-line saving-line">You could avoid about €${{tankSaving}} extra on a 50L fill-up</span>` +
-      whyLine;
+      whyLine + weeklyNote;
   }} else {{
     let fallAction, fallDetail;
     if (today < updateStart) {{
@@ -1972,7 +1994,7 @@ function updateRefuelCallout() {{
     answer.style.color = '#f59e0b';
     context.innerHTML =
       `<span class="refuel-context-line saving-line">Waiting could save about €${{tankSaving}} on a 50L fill-up</span>` +
-      whyLine;
+      whyLine + weeklyNote;
   }}
 }}
 

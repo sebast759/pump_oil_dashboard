@@ -75,8 +75,67 @@ def advise(fuel: str, brent_move: float) -> Advice:
     return Advice(fuel, expected, action, cents, saving)
 
 
+def weekly_brent_signal(
+    daily_dates: list[str], daily_prices: list[float], today: date | None = None
+) -> dict | None:
+    """Compare Monday-Sunday weekly average Brent prices.
+
+    Stations set prices off the *previous completed week's average*, with a
+    lag — not off any single day. Comparing single points (as this dashboard
+    used to) is noisy: a mid-week spike can make it look like Brent fell,
+    even in a week where its average — and so the price stations just set —
+    rose. Returns:
+
+      this_week_move:     last completed week's avg minus the week before —
+                           what stations most likely just priced in.
+      next_week_outlook:  the current, still-incomplete week's avg so far
+                           minus the last completed week's avg — where the
+                           *next* update is trending.
+
+    Either field is None when there isn't enough data yet. Returns None
+    entirely when there is no daily data at all.
+    """
+    if not daily_dates:
+        return None
+    import pandas as pd
+
+    today = today or date.today()
+    series = pd.Series(daily_prices, index=pd.to_datetime(daily_dates))
+    series = series[~series.index.duplicated(keep="last")].sort_index()
+    weekly = series.resample("W-SUN").mean().dropna()
+    if weekly.empty:
+        return None
+
+    today_ts = pd.Timestamp(today)
+    if weekly.index[-1] > today_ts:
+        # The last bucket's Sunday hasn't happened yet: it's the current,
+        # still-incomplete week (averaging whatever days have landed so far).
+        current_avg, current_end = float(weekly.iloc[-1]), weekly.index[-1]
+        completed = weekly.iloc[:-1]
+    else:
+        current_avg, current_end = None, None
+        completed = weekly
+
+    last_avg = float(completed.iloc[-1]) if len(completed) >= 1 else None
+    last_end = completed.index[-1] if len(completed) >= 1 else None
+    prior_avg = float(completed.iloc[-2]) if len(completed) >= 2 else None
+
+    return {
+        "this_week_move": (
+            round(last_avg - prior_avg, 2)
+            if last_avg is not None and prior_avg is not None else None
+        ),
+        "next_week_outlook": (
+            round(current_avg - last_avg, 2)
+            if current_avg is not None and last_avg is not None else None
+        ),
+        "last_completed_week_end": last_end.strftime("%Y-%m-%d") if last_end is not None else None,
+        "current_week_end": current_end.strftime("%Y-%m-%d") if current_end is not None else None,
+    }
+
+
 def signal_from_data(data: dict) -> dict:
-    """Latest Brent observation and the one before it, as the dashboard sees them."""
+    """Latest Brent observation and the weekly-average move, as the dashboard sees them."""
     latest = data.get("brent_latest") or {}
     price, brent_date = latest.get("price"), latest.get("date")
     if price is None:
@@ -85,7 +144,14 @@ def signal_from_data(data: dict) -> dict:
     previous = latest.get("previous_price")
     if previous is None:
         previous = next((v for v in reversed(data["brent"][:-1]) if v is not None), None)
-    return {"brent_price": price, "brent_previous": previous, "brent_date": brent_date}
+    weekly = weekly_brent_signal(data.get("brent_daily_dates") or [], data.get("brent_daily") or [])
+    return {
+        "brent_price": price,
+        "brent_previous": previous,
+        "brent_date": brent_date,
+        "this_week_move": (weekly or {}).get("this_week_move"),
+        "next_week_outlook": (weekly or {}).get("next_week_outlook"),
+    }
 
 
 def load_signal(path: Path = SIGNAL_PATH) -> dict:
@@ -126,8 +192,33 @@ def _fuel_section(advice: Advice) -> str:
     )
 
 
+def weekly_context_line(this_week_move: float | None, next_week_outlook: float | None) -> str | None:
+    """Explain a move that already happened this week, but only when it
+    conflicts with where next week's update is heading — e.g. stations just
+    raised prices off last week's average, even though this week's Brent has
+    already reversed. When both agree, the headline advice already covers it."""
+    if this_week_move is None or next_week_outlook is None:
+        return None
+    if abs(this_week_move) < 1 or this_week_move * next_week_outlook >= 0:
+        return None
+    this_direction = "raised" if this_week_move > 0 else "lowered"
+    next_direction = "another rise" if next_week_outlook > 0 else "a fall"
+    return (
+        f"Stations likely already {this_direction} prices this week, based on last "
+        f"week's Brent average. But this week's Brent prices point to {next_direction} "
+        "at the next update."
+    )
+
+
 def build_email(signal: dict) -> tuple[str, str]:
-    move = signal["brent_price"] - signal["brent_previous"]
+    # The raw week-on-week price move is just for the factual Brent line below.
+    # The recommendation itself is driven by the smoothed weekly-average
+    # outlook when available (see weekly_brent_signal), falling back to the
+    # raw move only when there isn't enough daily history for it yet.
+    raw_move = signal["brent_price"] - signal["brent_previous"]
+    move = signal.get("next_week_outlook")
+    if move is None:
+        move = raw_move
     advices = [advise(fuel, move) for fuel in ("diesel", "euro95")]
 
     if any(a.action == "fill_up" for a in advices):
@@ -137,12 +228,14 @@ def build_email(signal: dict) -> tuple[str, str]:
     else:
         subject = "Fuel tip: any day is fine next week"
 
-    direction = "up" if move >= 0 else "down"
+    context_line = weekly_context_line(signal.get("this_week_move"), signal.get("next_week_outlook"))
+    direction = "up" if raw_move >= 0 else "down"
     body = "\n\n".join([
         "Here is your Thursday fuel forecast.",
+        *([context_line] if context_line else []),
         *(_fuel_section(a) for a in advices),
         f"Brent crude is at ${signal['brent_price']:.2f}/bbl "
-        f"({direction} ${abs(move):.2f} on last week, as of {signal['brent_date']}).",
+        f"({direction} ${abs(raw_move):.2f} on last week, as of {signal['brent_date']}).",
         f"[See the full dashboard]({SITE_URL})",
         "*Indicative forecast based on Brent crude moves. Individual stations vary.*",
     ])
