@@ -36,14 +36,14 @@ class SignalTests(unittest.TestCase):
         self.assertEqual(weekly_email.signal_from_data(data),
                          {"brent_price": 99.0, "brent_previous": 95.0, "brent_date": "2026-09-21",
                           "this_week_move": None, "next_week_outlook": None,
-                          "next_update_date": "2026-09-21"})
+                          "last_completed_week_avg": None, "next_update_date": "2026-09-21"})
 
     def test_falls_back_to_weekly_series(self) -> None:
         data = {"brent": [90.0, None, 92.0], "latest_date": "2026-09-14", "brent_latest": None}
         self.assertEqual(weekly_email.signal_from_data(data),
                          {"brent_price": 92.0, "brent_previous": 90.0, "brent_date": "2026-09-14",
                           "this_week_move": None, "next_week_outlook": None,
-                          "next_update_date": "2026-09-21"})
+                          "last_completed_week_avg": None, "next_update_date": "2026-09-21"})
 
     def test_stale_data_are_not_sent(self) -> None:
         signal = {"brent_price": 99.0, "brent_previous": 95.0, "brent_date": "2026-09-01"}
@@ -100,6 +100,7 @@ class WeeklyBrentSignalTests(unittest.TestCase):
         self.assertAlmostEqual(signal["this_week_move"], 3.72, places=2)
         self.assertAlmostEqual(signal["next_week_outlook"], -105.39 + (100.34 + 99.53) / 2, places=2)
         self.assertEqual(signal["last_completed_week_end"], "2026-09-20")
+        self.assertAlmostEqual(signal["last_completed_week_avg"], 105.39, places=2)
 
     def test_none_with_no_daily_data(self) -> None:
         self.assertIsNone(weekly_email.weekly_brent_signal([], []))
@@ -131,6 +132,16 @@ class WeeklyContextLineTests(unittest.TestCase):
     def test_includes_the_next_update_date_when_given(self) -> None:
         line = weekly_email.weekly_context_line(3.72, -5.45, next_update="2026-09-28")
         self.assertIn("Mon 28 Sep", line)
+
+    def test_includes_the_percentage_when_baseline_given(self) -> None:
+        line = weekly_email.weekly_context_line(3.72, -5.34, last_completed_week_avg=105.39)
+        self.assertIn("-5.1%", line)
+        self.assertIn("more expensive", line)
+        self.assertIn("falling", line)
+
+    def test_no_percentage_without_a_baseline(self) -> None:
+        line = weekly_email.weekly_context_line(3.72, -5.45)
+        self.assertNotIn("%", line)
 
     def test_agreeing_moves_produce_no_note(self) -> None:
         self.assertIsNone(weekly_email.weekly_context_line(3.0, 4.0))

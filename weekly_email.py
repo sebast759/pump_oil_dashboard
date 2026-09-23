@@ -131,6 +131,7 @@ def weekly_brent_signal(
         ),
         "last_completed_week_end": last_end.strftime("%Y-%m-%d") if last_end is not None else None,
         "current_week_end": current_end.strftime("%Y-%m-%d") if current_end is not None else None,
+        "last_completed_week_avg": round(last_avg, 2) if last_avg is not None else None,
     }
 
 
@@ -167,6 +168,7 @@ def signal_from_data(data: dict) -> dict:
         "brent_date": brent_date,
         "this_week_move": (weekly or {}).get("this_week_move"),
         "next_week_outlook": (weekly or {}).get("next_week_outlook"),
+        "last_completed_week_avg": (weekly or {}).get("last_completed_week_avg"),
         "next_update_date": next_update_date((weekly or {}).get("current_week_end"), data["latest_date"]),
     }
 
@@ -210,7 +212,10 @@ def _fuel_section(advice: Advice) -> str:
 
 
 def weekly_context_line(
-    this_week_move: float | None, next_week_outlook: float | None, next_update: str | None = None
+    this_week_move: float | None,
+    next_week_outlook: float | None,
+    next_update: str | None = None,
+    last_completed_week_avg: float | None = None,
 ) -> str | None:
     """Explain a move that already happened this week, but only when it
     conflicts with where next week's update is heading — e.g. stations just
@@ -221,12 +226,18 @@ def weekly_context_line(
     if abs(this_week_move) < 1 or this_week_move * next_week_outlook >= 0:
         return None
     this_direction = "raised" if this_week_move > 0 else "lowered"
-    next_direction = "another rise" if next_week_outlook > 0 else "a fall"
-    when = f", on {format_date_short(next_update)}" if next_update else ""
+    this_reason = "more expensive" if this_week_move > 0 else "cheaper"
+    next_verb = "rising" if next_week_outlook > 0 else "falling"
+    next_noun = "another rise" if next_week_outlook > 0 else "a fall"
+    pct = ""
+    if last_completed_week_avg:
+        value = next_week_outlook / last_completed_week_avg * 100
+        pct = f" ({'+' if value >= 0 else ''}{value:.1f}%)"
+    when = f" from {format_date_short(next_update)} onwards" if next_update else ""
     return (
-        f"Stations likely already {this_direction} prices this week, based on last "
-        f"week's Brent average. But this week's Brent points to {next_direction} "
-        f"at the next update{when}."
+        f"Stations likely already {this_direction} prices this week (last week's Brent "
+        f"was {this_reason}). But this week's Brent is {next_verb}{pct}, pointing to "
+        f"{next_noun} at the pump{when}."
     )
 
 
@@ -249,7 +260,10 @@ def build_email(signal: dict) -> tuple[str, str]:
         subject = "Fuel tip: any day is fine next week"
 
     context_line = weekly_context_line(
-        signal.get("this_week_move"), signal.get("next_week_outlook"), signal.get("next_update_date")
+        signal.get("this_week_move"),
+        signal.get("next_week_outlook"),
+        signal.get("next_update_date"),
+        signal.get("last_completed_week_avg"),
     )
     direction = "up" if raw_move >= 0 else "down"
     body = "\n\n".join([

@@ -1131,7 +1131,11 @@ button.history-legend-item {{ cursor: pointer; transition: opacity .15s, color .
 }}
 .market-line {{ margin-top:13px; color:#cbd5e1; font-weight:350; }}
 .market-line strong {{ color:#f8fafc; font-weight:500; }}
-.why-line {{ margin-top:8px; color:#8497b1; }}
+.weekly-note {{
+  display:block; margin-top:10px; padding:10px 16px; border-radius:8px;
+  background:rgba(96,165,250,.08); border:1px solid rgba(96,165,250,.18);
+  color:#dbe5f3; font-weight:450;
+}}
 .backtest-summary {{
   display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px;
   margin:20px 0;
@@ -1920,10 +1924,15 @@ function weeklyContextLine(nextUpdate) {{
   if (!w || w.this_week_move == null || w.next_week_outlook == null) return null;
   if (Math.abs(w.this_week_move) < 1 || w.this_week_move * w.next_week_outlook >= 0) return null;
   const thisDirection = w.this_week_move > 0 ? 'raised' : 'lowered';
-  const nextDirection = w.next_week_outlook > 0 ? 'another rise' : 'a fall';
-  return `<span class="refuel-context-line why-line">Stations likely already ${{thisDirection}} prices ` +
-    `this week, based on last week's Brent average. But this week's Brent points to ${{nextDirection}} ` +
-    `at the next update, on ${{nextUpdate}}.</span>`;
+  const thisReason = w.this_week_move > 0 ? 'more expensive' : 'cheaper';
+  const nextVerb = w.next_week_outlook > 0 ? 'rising' : 'falling';
+  const nextNoun = w.next_week_outlook > 0 ? 'another rise' : 'a fall';
+  const pct = w.last_completed_week_avg
+    ? ` (${{w.next_week_outlook >= 0 ? '+' : ''}}${{(w.next_week_outlook / w.last_completed_week_avg * 100).toFixed(1)}}%)`
+    : '';
+  return `<span class="refuel-context-line weekly-note">Stations likely already ${{thisDirection}} prices ` +
+    `this week (last week's Brent was ${{thisReason}}). But this week's Brent is ${{nextVerb}}${{pct}}, ` +
+    `pointing to ${{nextNoun}} at the pump from ${{nextUpdate}} onwards.</span>`;
 }}
 
 function displayedBrentSeries(startDate=DATA.dates[0]) {{
