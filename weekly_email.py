@@ -286,12 +286,16 @@ def send_email(subject: str, body: str, api_key: str, draft: bool = False) -> di
             "subject": subject,
             "body": body,
             "status": "draft" if draft else "about_to_send",
+            # Filtered by metadata, not tags: Buttondown's Tags feature needs a
+            # paid plan ("Tags require a Basic plan or higher"), confirmed via
+            # a live API call on this account. Metadata works on any plan, and
+            # the signup form already sets metadata__source on every subscriber.
             "filters": {
                 "predicate": "and",
                 "groups": [],
                 "filters": [{
                     "operator": "contains",
-                    "field": "subscriber.tags",
+                    "field": "subscriber.metadata.source",
                     "value": NEWSLETTER_SOURCE,
                 }],
             },

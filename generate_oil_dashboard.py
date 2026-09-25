@@ -675,8 +675,10 @@ def build_html(data: dict) -> str:
           <span>Know if you need to fill up before Monday. One email a week, unsubscribe anytime.</span>
         </div>
         <input type="hidden" name="embed" value="1">
-        <input type="hidden" name="tag" value="{NEWSLETTER_SOURCE}">
         <input type="hidden" name="metadata__source" value="{NEWSLETTER_SOURCE}">
+        <!-- No tag field: Buttondown's Tags feature needs a paid plan on this
+             account ("Tags require a Basic plan or higher"). Filtering by
+             metadata__source above works on any plan and is all this needs. -->
         <div class="subscribe-fields">
           <input type="email" name="email" placeholder="you@example.com"
                  aria-label="Email address" autocomplete="email" required>

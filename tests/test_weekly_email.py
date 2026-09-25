@@ -70,7 +70,7 @@ class EmailTests(unittest.TestCase):
         payload = post.call_args.kwargs["json"]
         self.assertEqual(payload["status"], "about_to_send")
         self.assertEqual(payload["filters"]["filters"][0], {
-            "operator": "contains", "field": "subscriber.tags",
+            "operator": "contains", "field": "subscriber.metadata.source",
             "value": weekly_email.NEWSLETTER_SOURCE,
         })
 

@@ -45,14 +45,17 @@ runs Monday at 07:00 UTC, and can be started manually from the Actions tab.
 Visitors can subscribe on the dashboard to a Thursday email that says whether
 to fill up before Monday. Signups go straight to Buttondown through its native
 HTML form (`erireal` account, shared with another site; the form is hidden while `NEWSLETTER_BUTTONDOWN_USERNAME` in `weekly_email.py` is empty). Each signup from this
-site is tagged `fuelforecast` and carries `metadata__source=fuelforecast`.
+site carries `metadata__source=fuelforecast`. Not a tag: Buttondown's Tags
+feature needs a paid plan on this account ("Tags require a Basic plan or
+higher"), confirmed via the API; metadata works on any plan.
 
 `weekly_email.py` builds the email from `.cache/weekly_signal.json` (written by
 the generator, using the same forecast coefficients as the page) and sends it
-through the Buttondown API to subscribers tagged `fuelforecast` only. The
-Thursday 16:30 UTC workflow run sends it, and it needs a `BUTTONDOWN_API_KEY`
-repository secret. To try it without sending, run the workflow manually with
-`email_mode = draft`, or run `python weekly_email.py --dry-run` locally.
+through the Buttondown API to subscribers with `metadata__source=fuelforecast`
+only. The Thursday 16:30 UTC workflow run sends it, and it needs a
+`BUTTONDOWN_API_KEY` repository secret. To try it without sending, run the
+workflow manually with `email_mode = draft`, or run
+`python weekly_email.py --dry-run` locally.
 
 ## Brent data
 
