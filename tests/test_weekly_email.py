@@ -152,6 +152,21 @@ class WeeklyContextLineTests(unittest.TestCase):
     def test_missing_data_produces_no_note(self) -> None:
         self.assertIsNone(weekly_email.weekly_context_line(None, -3.0))
 
+    def test_no_note_when_every_fuel_is_any_day(self) -> None:
+        # Regression: a +0.5% outlook translates to well under a cent/L, so
+        # every fuel's advice is "any_day" -- the note must not then declare
+        # "pointing to another rise at the pump", contradicting the headline.
+        advices = [weekly_email.advise("diesel", 0.5), weekly_email.advise("euro95", 0.5)]
+        self.assertTrue(all(a.action == "any_day" for a in advices))
+        line = weekly_email.weekly_context_line(-3.72, 0.5, advices=advices)
+        self.assertIsNone(line)
+
+    def test_note_kept_when_at_least_one_fuel_is_actionable(self) -> None:
+        advices = [weekly_email.advise("diesel", -6.0), weekly_email.advise("euro95", -6.0)]
+        self.assertTrue(all(a.action == "wait" for a in advices))
+        line = weekly_email.weekly_context_line(3.72, -6.0, advices=advices)
+        self.assertIsNotNone(line)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1913,9 +1913,12 @@ function nextUpdateDateLabel() {{
 // Mirrors weekly_email.py's weekly_context_line(): explain a move that
 // already happened this week, only when it conflicts with where next
 // week's update is heading (otherwise the headline advice already covers it).
-function weeklyContextLine(nextUpdate) {{
+// expectedCents is the same translated pump-price move the headline uses --
+// below the "any day is fine" threshold, there is nothing worth flagging.
+function weeklyContextLine(nextUpdate, expectedCents) {{
   const w = DATA.brent_weekly;
   if (!w || w.this_week_move == null || w.next_week_outlook == null) return null;
+  if (Math.abs(expectedCents) < 2) return null;
   if (Math.abs(w.this_week_move) < 1 || w.this_week_move * w.next_week_outlook >= 0) return null;
   const thisDirection = w.this_week_move > 0 ? 'raised' : 'lowered';
   const thisReason = w.this_week_move > 0 ? 'more expensive' : 'cheaper';
@@ -1980,7 +1983,7 @@ function updateRefuelCallout() {{
   const cents = Math.abs(Math.round(expectedCents));
   const tankSaving = (Math.round(Math.abs(expectedCents / 100 * 50) * 10) / 10).toFixed(2);
   const nextUpdate = nextUpdateDateLabel();
-  const weeklyNote = weeklyContextLine(nextUpdate) ?? '';
+  const weeklyNote = weeklyContextLine(nextUpdate, expectedCents) ?? '';
 
   if (Math.abs(expectedCents) < 2) {{
     answer.innerHTML =

@@ -216,12 +216,20 @@ def weekly_context_line(
     next_week_outlook: float | None,
     next_update: str | None = None,
     last_completed_week_avg: float | None = None,
+    advices: list[Advice] = (),
 ) -> str | None:
     """Explain a move that already happened this week, but only when it
     conflicts with where next week's update is heading — e.g. stations just
     raised prices off last week's average, even though this week's Brent has
-    already reversed. When both agree, the headline advice already covers it."""
+    already reversed. When both agree, the headline advice already covers it.
+
+    advices gates on magnitude the same way the headline does: if every fuel
+    section already says "any day is fine" (the move is below
+    NO_CHANGE_CENTS), there is nothing meaningful to flag here either --
+    saying "pointing to a rise/fall" would contradict that."""
     if this_week_move is None or next_week_outlook is None:
+        return None
+    if advices and all(a.action == "any_day" for a in advices):
         return None
     if abs(this_week_move) < 1 or this_week_move * next_week_outlook >= 0:
         return None
@@ -264,6 +272,7 @@ def build_email(signal: dict) -> tuple[str, str]:
         signal.get("next_week_outlook"),
         signal.get("next_update_date"),
         signal.get("last_completed_week_avg"),
+        advices,
     )
     direction = "up" if raw_move >= 0 else "down"
     body = "\n\n".join([
