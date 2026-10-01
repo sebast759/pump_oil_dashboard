@@ -59,8 +59,6 @@ jobs:
 
       - name: Generate dashboard
         run: python generate_oil_dashboard.py --output site/index.html
-        env:
-          GOATCOUNTER_SITE_CODE: ${{ vars.GOATCOUNTER_SITE_CODE }}
 
       - name: Upload dashboard
         uses: actions/upload-pages-artifact@v3

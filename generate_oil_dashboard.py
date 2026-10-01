@@ -645,17 +645,9 @@ def build_html(data: dict) -> str:
     data_js        = json.dumps(data)
     illustration_path = Path(__file__).parent / "assets" / "refuel-nozzle.png"
     refuel_illustration = base64.b64encode(illustration_path.read_bytes()).decode()
-    goatcounter_code = (
-        os.environ.get("GOATCOUNTER_SITE_CODE") or "sebast9"
-    ).strip()
-    if goatcounter_code and not re.fullmatch(r"[A-Za-z0-9-]+", goatcounter_code):
-        raise ValueError(
-            "GOATCOUNTER_SITE_CODE may contain only letters, numbers, and hyphens"
-        )
     analytics_html = (
-        f'<script data-goatcounter="https://{goatcounter_code}.goatcounter.com/count" '
+        '<script data-goatcounter="https://fuelforecast.goatcounter.com/count" '
         'async src="https://gc.zgo.at/count.js"></script>'
-        if goatcounter_code else ""
     )
 
     forecast_coefficients_js = json.dumps(FORECAST_COEFFICIENTS)
