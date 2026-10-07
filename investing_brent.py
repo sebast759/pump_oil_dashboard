@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import math
-import os
 import re
 import time
 from pathlib import Path
@@ -27,25 +26,6 @@ PRIMARY_ID_PATTERNS = (
     r'"identifiers"\s*:\s*\{[^{{}}]*?"instrument_id"\s*:\s*"?(\d+)"?',
     r'"commodityStore".*?"instrument"\s*:\s*\{.*?"base"\s*:\s*\{[^{{}}]*?"id"\s*:\s*"?(\d+)"?',
 )
-
-
-def _load_dotenv(path: Path = Path(__file__).parent / ".env") -> None:
-    """Load KEY=VALUE lines from a local .env without overriding real env vars."""
-    try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-    except OSError:
-        return
-    for line in lines:
-        key, sep, value = line.strip().partition("=")
-        if sep and not key.startswith("#"):
-            os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
-
-
-def _proxies() -> dict | None:
-    """Optional egress proxy (e.g. Fixie static-IP URL) from FIXIE_URL."""
-    _load_dotenv()
-    url = os.environ.get("FIXIE_URL", "").strip()
-    return {"http": url, "https": url} if url else None
 
 
 class InvestingDataError(RuntimeError):
@@ -77,7 +57,7 @@ def fetch_chart_page(*, timeout: float = 30.0, sleep=time.sleep) -> str:
     """Fetch the chart page, changing browser fingerprint only after a 403."""
     last_response = None
     for index, browser in enumerate(BROWSERS):
-        response = requests.get(PAGE_URL, impersonate=browser, timeout=timeout, proxies=_proxies())
+        response = requests.get(PAGE_URL, impersonate=browser, timeout=timeout)
         last_response = response
         if response.status_code != 403:
             response.raise_for_status()
@@ -182,7 +162,6 @@ def fetch_history(
         headers={"Referer": PAGE_URL, "Accept": "application/json"},
         impersonate="chrome",
         timeout=timeout,
-        proxies=_proxies(),
         attempts=attempts,
         sleep=sleep,
     )
