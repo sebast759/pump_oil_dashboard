@@ -3279,7 +3279,7 @@ function buildEriceira() {{
   ericeiraChart = new Chart($('ericeiraChart').getContext('2d'), {{
     type:'line',
     data:{{
-      labels:history.map(row => fmtDateShort(row.date).replace(/ \d{{4}}$/, '')),
+      labels:history.map(row => fmtDateShort(row.date).replace(/ \\d{{4}}$/, '')),
       datasets:series.map(([key,label,color]) => ({{
         label, data:history.map(row => row[key] ?? null), borderColor:color,
         backgroundColor:'transparent', borderWidth:2, pointRadius:2,
