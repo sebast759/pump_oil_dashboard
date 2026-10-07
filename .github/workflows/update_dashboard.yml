@@ -59,6 +59,8 @@ jobs:
 
       - name: Generate dashboard
         run: python generate_oil_dashboard.py --output site/index.html
+        env:
+          BRENT_PROXY_URL: ${{ secrets.BRENT_PROXY_URL }}
 
       - name: Upload dashboard
         uses: actions/upload-pages-artifact@v3
