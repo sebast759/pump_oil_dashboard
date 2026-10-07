@@ -1,4 +1,5 @@
 # Cached data — regenerated on each run, never commit
+.env
 *.xlsx
 .cache/
 

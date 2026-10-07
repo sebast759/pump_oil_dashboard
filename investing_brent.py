@@ -29,9 +29,22 @@ PRIMARY_ID_PATTERNS = (
 )
 
 
+def _load_dotenv(path: Path = Path(__file__).parent / ".env") -> None:
+    """Load KEY=VALUE lines from a local .env without overriding real env vars."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return
+    for line in lines:
+        key, sep, value = line.strip().partition("=")
+        if sep and not key.startswith("#"):
+            os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
 def _proxies() -> dict | None:
-    """Optional egress proxy (e.g. a Fixie static-IP URL) from BRENT_PROXY_URL."""
-    url = os.environ.get("BRENT_PROXY_URL", "").strip()
+    """Optional egress proxy (e.g. Fixie static-IP URL) from FIXIE_URL."""
+    _load_dotenv()
+    url = os.environ.get("FIXIE_URL", "").strip()
     return {"http": url, "https": url} if url else None
 
 
