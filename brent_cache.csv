@@ -3190,7 +3190,8 @@ daily:2026-10-28,115.32
 daily:2026-10-29,114.88
 daily:2026-10-30,117.64
 daily:2026-11-01,111.56
-daily:2026-11-02,106.11
-latest:2026-11-02,106.11
-latest_previous,115.81
+daily:2026-11-02,104.77
+daily:2026-11-03,106.33
+latest:2026-11-03,106.33
+latest_previous,113.88
 latest_contract,front month
