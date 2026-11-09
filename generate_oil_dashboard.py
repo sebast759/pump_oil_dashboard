@@ -1878,16 +1878,34 @@ function buildBadges() {{
 }}
 
 // ---- HISTORICAL CHART ----------------------------------------------------
-function latestBrentMove() {{
+function pricingSignal() {{
+  const weekly = DATA.brent_weekly;
+  // On Monday and Tuesday stations are applying the move implied by the week
+  // that has just closed.  The new week's average contains only one or two
+  // observations at that point and describes the *following* reset, so using
+  // it here can hide the price change that is actually due now.
+  const weekday = new Date().getDay();
+  const repricingNow = weekday === 1 || weekday === 2;
+  if (repricingNow && weekly?.this_week_move != null) {{
+    return {{ move: weekly.this_week_move, repricingNow: true }};
+  }}
+
   // Prefer the smoothed weekly-average outlook (current week so far vs the
   // last completed week). See weekly_email.py's weekly_brent_signal for why:
   // stations price off the previous week's average, not a single day.
-  const outlook = DATA.brent_weekly?.next_week_outlook;
-  if (outlook != null) return outlook;
+  const outlook = weekly?.next_week_outlook;
+  if (outlook != null) return {{ move: outlook, repricingNow: false }};
   const previous = DATA.brent_latest?.previous_price ??
     DATA.brent.slice(0, -1).reverse().find(v => v != null);
   const latest = DATA.brent_latest?.price ?? DATA.brent[DATA.brent.length - 1];
-  return latest != null && previous != null ? latest - previous : null;
+  return {{
+    move: latest != null && previous != null ? latest - previous : null,
+    repricingNow: false
+  }};
+}}
+
+function latestBrentMove() {{
+  return pricingSignal().move;
 }}
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -1964,7 +1982,8 @@ function forecastCoefficient(brentMove) {{
 }}
 
 function updateRefuelCallout() {{
-  const move = latestBrentMove();
+  const signal = pricingSignal();
+  const move = signal.move;
   const answer = $('refuel-answer');
   const context = $('refuel-context');
   const brentDate = DATA.brent_latest?.date;
@@ -1983,26 +2002,29 @@ function updateRefuelCallout() {{
   const cents = Math.abs(Math.round(expectedCents));
   const tankSaving = (Math.round(Math.abs(expectedCents / 100 * 50) * 10) / 10).toFixed(2);
   const nextUpdate = nextUpdateDateLabel();
-  const weeklyNote = weeklyContextLine(nextUpdate, expectedCents) ?? '';
+  const weeklyNote = signal.repricingNow
+    ? ''
+    : (weeklyContextLine(nextUpdate, expectedCents) ?? '');
+  const updateTiming = signal.repricingNow ? 'today or tomorrow' : 'at the next update';
 
   if (Math.abs(expectedCents) < 2) {{
     answer.innerHTML =
       '<span class="refuel-action">Any day is fine</span>' +
-      '<span class="refuel-detail">No meaningful price change is expected at the next update</span>';
+      `<span class="refuel-detail">No meaningful price change is expected ${{updateTiming}}</span>`;
     answer.style.color = '#94a3b8';
     context.innerHTML = weeklyNote;
   }} else if (expectedCents > 0) {{
     answer.innerHTML =
       '<span class="refuel-action">Fill up before Monday</span>' +
-      `<span class="refuel-detail">Brent points to a rise of about ${{cents}} cents/L at the next update</span>`;
+      `<span class="refuel-detail">Brent points to a rise of about ${{cents}} cents/L ${{updateTiming}}</span>`;
     answer.style.color = '#34d399';
     context.innerHTML =
       `<span class="refuel-context-line saving-line">You could avoid about €${{tankSaving}} extra on a 50L fill-up</span>` +
       weeklyNote;
   }} else {{
     answer.innerHTML =
-      '<span class="refuel-action">Wait until next week</span>' +
-      `<span class="refuel-detail">Brent points to a fall of about ${{cents}} cents/L at the next update</span>`;
+      `<span class="refuel-action">${{signal.repricingNow ? 'Wait until tomorrow' : 'Wait until next week'}}</span>` +
+      `<span class="refuel-detail">Brent points to a fall of about ${{cents}} cents/L ${{updateTiming}}</span>`;
     answer.style.color = '#f59e0b';
     context.innerHTML =
       `<span class="refuel-context-line saving-line">Waiting could save about €${{tankSaving}} on a 50L fill-up</span>` +
@@ -2032,12 +2054,15 @@ function pumpHistoryWithForecast(country) {{
     }}))
     .filter(Boolean);
   const forecast = pumpForecast(country);
-  const forecastDisplayX = Math.max(
-    dateX(DATA.dates[DATA.dates.length - 1], 7),
-    DATA.brent_latest?.date
-      ? dateX(DATA.brent_latest.date, 7)
-      : dateX(DATA.dates[DATA.dates.length - 1], 7)
-  );
+  const imminentResetX = dateX(DATA.dates[DATA.dates.length - 1], 7);
+  const forecastDisplayX = pricingSignal().repricingNow
+    ? imminentResetX
+    : Math.max(
+        imminentResetX,
+        DATA.brent_latest?.date
+          ? dateX(DATA.brent_latest.date, 7)
+          : imminentResetX
+      );
   if (forecast != null) points.push({{
     x: forecastDisplayX,
     y: forecast,
