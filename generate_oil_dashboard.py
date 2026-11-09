@@ -1104,6 +1104,14 @@ button.history-legend-item {{ cursor: pointer; transition: opacity .15s, color .
 .refuel-freshness-item {{ white-space:nowrap; }}
 .refuel-freshness-label {{ color:#7184a0; font-weight:600; }}
 .refuel-freshness-value {{ color:#dbe5f3; font-weight:650; }}
+.local-price-check {{
+  margin:9px auto 0; color:#8292aa; font-size:10px; line-height:1.4;
+}}
+.local-price-check button {{
+  padding:0; border:0; background:none; color:#aebdd1;
+  font:600 10px 'Inter','DM Sans',sans-serif; cursor:pointer;
+}}
+.local-price-check button:hover {{ color:#f59e0b; }}
 .refuel-answer {{
   font-size:24px; font-weight:800; line-height:1.15; letter-spacing:-.02em;
 }}
@@ -1321,6 +1329,7 @@ canvas {{ max-width: 100%; }}
           <div class="refuel-answer" id="refuel-answer"></div>
           <div class="refuel-context" id="refuel-context"></div>
           <div class="refuel-freshness" id="refuel-freshness" aria-label="Data dates"></div>
+          <div class="local-price-check" id="local-price-check"></div>
         </div>
       </div>
       {subscribe_html}
@@ -1981,7 +1990,27 @@ function forecastCoefficient(brentMove) {{
   return forecastCoefficientForFuel(currentFuel, brentMove);
 }}
 
+function updateLocalPriceCheck() {{
+  const el = $('local-price-check');
+  const prices = DATA.ericeira?.prices ?? [];
+  const item = prices.find(({{ fuel }}) => {{
+    const name = fuel.toLowerCase();
+    return currentFuel === 'diesel'
+      ? name === 'gasóleo'
+      : name === 'super 95 simples';
+  }});
+  if (!item) {{
+    el.textContent = '';
+    return;
+  }}
+  const label = currentFuel === 'diesel' ? 'Diesel' : 'Euro-95';
+  el.innerHTML = `<strong style="color:#cbd5e1">Ericeira Intermarché</strong>: ${{label}} ` +
+    `<strong style="color:#cbd5e1">€${{Number(item.price).toFixed(3)}}/L</strong> · ` +
+    `<button type="button" onclick="showTab(7)">local history →</button>`;
+}}
+
 function updateRefuelCallout() {{
+  updateLocalPriceCheck();
   const signal = pricingSignal();
   const move = signal.move;
   const answer = $('refuel-answer');
