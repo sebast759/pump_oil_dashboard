@@ -1917,6 +1917,23 @@ function latestBrentMove() {{
   return pricingSignal().move;
 }}
 
+// Average the countries shown on the dashboard so the callout can describe
+// the newly published pump-price week without implying that every individual
+// country or station moved by the same amount.
+function latestPumpMove() {{
+  const weeklyAverages = [DATA.dates.length - 2, DATA.dates.length - 1].map(index => {{
+    const values = CTRS
+      .map(country => DATA.countries[country]?.[currentFuel]?.[index])
+      .filter(value => value != null);
+    return values.length
+      ? values.reduce((total, value) => total + value, 0) / values.length
+      : null;
+  }});
+  return weeklyAverages.every(value => value != null)
+    ? (weeklyAverages[1] - weeklyAverages[0]) / 10 // EUR/1,000L to cents/L
+    : null;
+}}
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 function dateX(iso, leadDays=0) {{
@@ -2031,6 +2048,10 @@ function updateRefuelCallout() {{
   const cents = Math.abs(Math.round(expectedCents));
   const tankSaving = (Math.round(Math.abs(expectedCents / 100 * 50) * 10) / 10).toFixed(2);
   const nextUpdate = nextUpdateDateLabel();
+  const pumpMove = latestPumpMove();
+  const declineIsContinuing = !signal.repricingNow && expectedCents < -2 &&
+    pumpMove != null && pumpMove < 0 &&
+    DATA.brent_weekly?.this_week_move < 0 && DATA.brent_weekly?.next_week_outlook < 0;
   const weeklyNote = signal.repricingNow
     ? ''
     : (weeklyContextLine(nextUpdate, expectedCents) ?? '');
@@ -2051,12 +2072,17 @@ function updateRefuelCallout() {{
       `<span class="refuel-context-line saving-line">You could avoid about €${{tankSaving}} extra on a 50L fill-up</span>` +
       weeklyNote;
   }} else {{
-    answer.innerHTML =
-      `<span class="refuel-action">${{signal.repricingNow ? 'Wait until tomorrow' : 'Wait until next week'}}</span>` +
-      `<span class="refuel-detail">Brent points to a fall of about ${{cents}} cents/L ${{updateTiming}}</span>`;
+    answer.innerHTML = declineIsContinuing
+      ? '<span class="refuel-action">This week is cheaper than last week</span>' +
+        '<span class="refuel-detail">Brent continues to decline</span>'
+      : `<span class="refuel-action">${{signal.repricingNow ? 'Wait until tomorrow' : 'Wait until next week'}}</span>` +
+        `<span class="refuel-detail">Brent points to a fall of about ${{cents}} cents/L ${{updateTiming}}</span>`;
     answer.style.color = '#f59e0b';
     context.innerHTML =
-      `<span class="refuel-context-line saving-line">Waiting could save about €${{tankSaving}} on a 50L fill-up</span>` +
+      (declineIsContinuing
+        ? '<span class="refuel-context-line weekly-note">The lower pump prices seen at the start of this week should continue over the coming days and into early next week.</span>'
+        : '') +
+      `<span class="refuel-context-line saving-line">${{declineIsContinuing ? 'If you can wait, you could save' : 'Waiting could save'}} about €${{tankSaving}} on a 50L fill-up</span>` +
       weeklyNote;
   }}
 }}
